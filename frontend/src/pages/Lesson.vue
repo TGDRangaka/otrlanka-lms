@@ -377,7 +377,6 @@ const props = defineProps({
 })
 
 onMounted(() => {
-	startTimer()
 	sidebarStore.isSidebarCollapsed = true
 	document.addEventListener('fullscreenchange', attachFullscreenEvent)
 	socket.on('update_lesson_progress', (data) => {
@@ -557,7 +556,6 @@ watch(
 			plyrSources.value = []
 			await nextTick()
 			resetLessonState(newChapterNumber, newLessonNumber)
-			startTimer()
 			updateNotes()
 			checkIfDiscussionsAllowed()
 			checkQuiz()
@@ -592,7 +590,7 @@ const getVideoDetails = () => {
 	const videos = document.querySelectorAll('video')
 	if (videos.length > 0) {
 		videos.forEach((video) => {
-			if (video.currentTime == video.duration) markProgress()
+			if (video.duration > 0 && video.currentTime >= video.duration - 0.5) markProgress()
 			details.push({
 				source: video.src,
 				watch_time: video.currentTime,
@@ -605,7 +603,7 @@ const getVideoDetails = () => {
 const getPlyrSourceDetails = () => {
 	let details = []
 	plyrSources.value.forEach((source) => {
-		if (source.currentTime == source.duration) markProgress()
+		if (source.duration > 0 && source.currentTime >= source.duration - 0.5) markProgress()
 		let src = cleanYouTubeUrl(source.source)
 		details.push({
 			source: src,
@@ -622,13 +620,94 @@ const cleanYouTubeUrl = (url) => {
 	return urlObj.toString()
 }
 
+const isVideoLesson = (data) => {
+	if (!data) return false
+	if (data.icon === 'icon-youtube') return true
+	if (data.videos && data.videos.length > 0) return true
+	if (plyrSources.value && plyrSources.value.length > 0) return true
+	if (document.querySelectorAll('video, .video-player').length > 0) return true
+
+	if (data.content) {
+		const contentStr = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+		const lowerContent = contentStr.toLowerCase()
+		if (
+			lowerContent.includes('"upload"') ||
+			lowerContent.includes('youtube') ||
+			lowerContent.includes('vimeo') ||
+			lowerContent.includes('.mp4') ||
+			lowerContent.includes('.webm') ||
+			lowerContent.includes('.mov')
+		) {
+			return true
+		}
+	}
+
+	if (data.body) {
+		const lowerBody = data.body.toLowerCase()
+		if (
+			lowerBody.includes('youtubevideo') ||
+			lowerBody.includes('youtube') ||
+			lowerBody.includes('vimeo')
+		) {
+			return true
+		}
+	}
+
+	return false
+}
+
+const attachVideoCompletionListeners = () => {
+	if (plyrSources.value && plyrSources.value.length > 0) {
+		plyrSources.value.forEach((player) => {
+			if (!player._hasCompletionListener) {
+				player._hasCompletionListener = true
+				player.on('ended', () => {
+					markProgress()
+				})
+				player.on('timeupdate', () => {
+					if (player.duration > 0 && player.currentTime >= player.duration - 0.5) {
+						markProgress()
+					}
+				})
+			}
+		})
+	}
+
+	const videos = document.querySelectorAll('video')
+	if (videos.length > 0) {
+		videos.forEach((vid) => {
+			if (!vid._hasCompletionListener) {
+				vid._hasCompletionListener = true
+				vid.addEventListener('ended', () => {
+					markProgress()
+				})
+				vid.addEventListener('timeupdate', () => {
+					if (vid.duration > 0 && vid.currentTime >= vid.duration - 0.5) {
+						markProgress()
+					}
+				})
+			}
+		})
+	}
+}
+
 watch(
 	() => lesson.data,
 	async (data) => {
+		if (!data) return
 		setupLesson(data)
-		getPlyrSource()
+		await getPlyrSource()
 		updateNotes()
-		if (data.icon == 'icon-youtube') clearInterval(timerInterval)
+		attachVideoCompletionListeners()
+		if (isVideoLesson(data)) {
+			if (timerInterval) {
+				clearInterval(timerInterval)
+				timerInterval = null
+			}
+			timer.value = 0
+		} else {
+			startTimer()
+		}
 	}
 )
 
@@ -637,11 +716,12 @@ const getPlyrSource = async () => {
 	if (plyrSources.value.length == 0) {
 		plyrSources.value = await enablePlyr()
 	}
+	attachVideoCompletionListeners()
 	updateVideoWatchDuration()
 }
 
 const updateVideoWatchDuration = () => {
-	if (lesson.data.videos && lesson.data.videos.length > 0) {
+	if (lesson.data?.videos && lesson.data.videos.length > 0) {
 		lesson.data.videos.forEach((video) => {
 			if (video.source.includes('youtube') || video.source.includes('vimeo')) {
 				updatePlyrVideoTime(video)
@@ -663,6 +743,9 @@ const updatePlyrVideoTime = (video) => {
 				plyrSource.play()
 				plyrSource.pause()
 			}
+		})
+		plyrSource.on('ended', () => {
+			markProgress()
 		})
 	})
 }
@@ -686,10 +769,30 @@ const updateVideoTime = (video) => {
 }
 
 const startTimer = () => {
-	let timerInterval = setInterval(() => {
+	if (timerInterval) {
+		clearInterval(timerInterval)
+		timerInterval = null
+	}
+	timer.value = 0
+
+	if (isVideoLesson(lesson.data)) {
+		return
+	}
+
+	timerInterval = setInterval(() => {
+		if (isVideoLesson(lesson.data)) {
+			if (timerInterval) {
+				clearInterval(timerInterval)
+				timerInterval = null
+			}
+			return
+		}
 		timer.value++
-		if (timer.value == 30) {
-			clearInterval(timerInterval)
+		if (timer.value >= 30) {
+			if (timerInterval) {
+				clearInterval(timerInterval)
+				timerInterval = null
+			}
 			markProgress()
 		}
 	}, 1000)
