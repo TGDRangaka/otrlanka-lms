@@ -17,14 +17,15 @@ export function isVideoComplete(currentTime: number, duration: number): boolean 
 
 export function shouldStartDwellTimer(opts: {
 	hasVideo: boolean
-	enforceVideo: boolean | 0 | 1
+	enforceVideo?: boolean | 0 | 1
 }): boolean {
-	return !(opts.hasVideo && !!opts.enforceVideo)
+	// Video lessons must NEVER auto-complete via dwell timer
+	return !opts.hasVideo
 }
 
 export function shouldAttachVideoFallback(opts: {
 	hasVideo: boolean
-	enforceVideo: boolean | 0 | 1
+	enforceVideo?: boolean | 0 | 1
 }): boolean {
-	return opts.hasVideo && !!opts.enforceVideo
+	return opts.hasVideo
 }

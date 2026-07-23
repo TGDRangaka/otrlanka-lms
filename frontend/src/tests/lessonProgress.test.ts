@@ -74,12 +74,9 @@ describe('shouldStartDwellTimer', () => {
 		expect(shouldStartDwellTimer({ hasVideo: false, enforceVideo: 1 })).toBe(true)
 	})
 
-	it('starts when there is video but enforcement is off (legacy 30s behavior)', () => {
-		expect(shouldStartDwellTimer({ hasVideo: true, enforceVideo: false })).toBe(true)
-		expect(shouldStartDwellTimer({ hasVideo: true, enforceVideo: 0 })).toBe(true)
-	})
-
-	it('does NOT start when video is present and enforcement is on', () => {
+	it('does NOT start when there is a video', () => {
+		expect(shouldStartDwellTimer({ hasVideo: true, enforceVideo: false })).toBe(false)
+		expect(shouldStartDwellTimer({ hasVideo: true, enforceVideo: 0 })).toBe(false)
 		expect(shouldStartDwellTimer({ hasVideo: true, enforceVideo: true })).toBe(false)
 		expect(shouldStartDwellTimer({ hasVideo: true, enforceVideo: 1 })).toBe(false)
 	})
@@ -91,12 +88,9 @@ describe('shouldAttachVideoFallback', () => {
 		expect(shouldAttachVideoFallback({ hasVideo: false, enforceVideo: true })).toBe(false)
 	})
 
-	it('does not attach when enforcement is off (no recovery needed)', () => {
-		expect(shouldAttachVideoFallback({ hasVideo: true, enforceVideo: false })).toBe(false)
-		expect(shouldAttachVideoFallback({ hasVideo: true, enforceVideo: 0 })).toBe(false)
-	})
-
-	it('attaches only when both flags are true', () => {
+	it('attaches whenever a video is present', () => {
+		expect(shouldAttachVideoFallback({ hasVideo: true, enforceVideo: false })).toBe(true)
+		expect(shouldAttachVideoFallback({ hasVideo: true, enforceVideo: 0 })).toBe(true)
 		expect(shouldAttachVideoFallback({ hasVideo: true, enforceVideo: true })).toBe(true)
 		expect(shouldAttachVideoFallback({ hasVideo: true, enforceVideo: 1 })).toBe(true)
 	})

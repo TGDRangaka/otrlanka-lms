@@ -837,9 +837,18 @@ const attachVideoEndedListeners = () => {
 		trackVideoWatchDuration()
 	}
 
+	const checkProgressThreshold = (currentTime, duration) => {
+		if (isVideoComplete(currentTime, duration)) {
+			markProgress()
+		}
+	}
+
 	document.querySelectorAll('video').forEach((video) => {
 		if (!video._lmsEndedAttached) {
 			video.addEventListener('ended', onVideoEnded)
+			video.addEventListener('timeupdate', () => {
+				checkProgressThreshold(video.currentTime, video.duration)
+			})
 			video._lmsEndedAttached = true
 		}
 	})
@@ -847,6 +856,9 @@ const attachVideoEndedListeners = () => {
 	plyrSources.value.forEach((plyrSource) => {
 		if (!plyrSource._lmsEndedAttached) {
 			plyrSource.on('ended', onVideoEnded)
+			plyrSource.on('timeupdate', () => {
+				checkProgressThreshold(plyrSource.currentTime, plyrSource.duration)
+			})
 			plyrSource.on('statechange', (event) => {
 				if (event.detail?.code === 0) onVideoEnded()
 			})
