@@ -626,33 +626,6 @@ const isVideoLesson = (data) => {
 	if (data.videos && data.videos.length > 0) return true
 	if (plyrSources.value && plyrSources.value.length > 0) return true
 	if (document.querySelectorAll('video, .video-player').length > 0) return true
-
-	if (data.content) {
-		const contentStr = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
-		const lowerContent = contentStr.toLowerCase()
-		if (
-			lowerContent.includes('"upload"') ||
-			lowerContent.includes('youtube') ||
-			lowerContent.includes('vimeo') ||
-			lowerContent.includes('.mp4') ||
-			lowerContent.includes('.webm') ||
-			lowerContent.includes('.mov')
-		) {
-			return true
-		}
-	}
-
-	if (data.body) {
-		const lowerBody = data.body.toLowerCase()
-		if (
-			lowerBody.includes('youtubevideo') ||
-			lowerBody.includes('youtube') ||
-			lowerBody.includes('vimeo')
-		) {
-			return true
-		}
-	}
-
 	return false
 }
 
@@ -661,9 +634,7 @@ const attachVideoCompletionListeners = () => {
 		plyrSources.value.forEach((player) => {
 			if (!player._hasCompletionListener) {
 				player._hasCompletionListener = true
-				player.on('ended', () => {
-					markProgress()
-				})
+				player.on('ended', () => markProgress())
 				player.on('timeupdate', () => {
 					if (player.duration > 0 && player.currentTime >= player.duration - 0.5) {
 						markProgress()
@@ -678,9 +649,7 @@ const attachVideoCompletionListeners = () => {
 		videos.forEach((vid) => {
 			if (!vid._hasCompletionListener) {
 				vid._hasCompletionListener = true
-				vid.addEventListener('ended', () => {
-					markProgress()
-				})
+				vid.addEventListener('ended', () => markProgress())
 				vid.addEventListener('timeupdate', () => {
 					if (vid.duration > 0 && vid.currentTime >= vid.duration - 0.5) {
 						markProgress()
@@ -716,7 +685,6 @@ const getPlyrSource = async () => {
 	if (plyrSources.value.length == 0) {
 		plyrSources.value = await enablePlyr()
 	}
-	attachVideoCompletionListeners()
 	updateVideoWatchDuration()
 }
 
@@ -734,18 +702,12 @@ const updateVideoWatchDuration = () => {
 
 const updatePlyrVideoTime = (video) => {
 	plyrSources.value.forEach((plyrSource) => {
-		let lastWatchedTime = 0
-		let isSeeking = false
-
 		plyrSource.on('ready', () => {
 			if (plyrSource.source === video.source) {
 				plyrSource.embed.seekTo(video.watch_time, true)
 				plyrSource.play()
 				plyrSource.pause()
 			}
-		})
-		plyrSource.on('ended', () => {
-			markProgress()
 		})
 	})
 }
