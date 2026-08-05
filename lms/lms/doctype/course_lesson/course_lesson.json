@@ -10,9 +10,9 @@
  "field_order": [
   "title",
   "include_in_preview",
+  "is_scorm_package",
   "column_break_4",
   "chapter",
-  "is_scorm_package",
   "course",
   "section_break_11",
   "content",
@@ -67,7 +67,6 @@
   {
    "fieldname": "body",
    "fieldtype": "Markdown Editor",
-   "ignore_xss_filter": 1,
    "label": "Body"
   },
   {
@@ -161,11 +160,11 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-04-10 15:19:22.400932",
- "modified_by": "Administrator",
+ "modified": "2026-04-01 12:21:25.050340",
+ "modified_by": "sayali@frappe.io",
  "module": "LMS",
  "name": "Course Lesson",
- "naming_rule": "Expression",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {

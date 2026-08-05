@@ -2,13 +2,15 @@ import { Pencil } from 'lucide-vue-next'
 import { createApp, h } from 'vue'
 import AssessmentPlugin from '@/components/AssessmentPlugin.vue'
 import translationPlugin from '../translation'
-import { usersStore } from '@/stores/user'
 import { call } from 'frappe-ui'
+import router from '@/router'
+import { getLmsRoute } from '@/utils/basePath'
 
 export class Assignment {
-	constructor({ data, api, readOnly }) {
+	constructor({ data, api, readOnly, config }) {
 		this.data = data
 		this.readOnly = readOnly
+		this.studentView = Boolean(config?.studentView)
 	}
 
 	static get toolbox() {
@@ -42,18 +44,22 @@ export class Assignment {
 
 	renderAssignment(assignment) {
 		if (this.readOnly) {
-			const { userResource } = usersStore()
-			call('frappe.client.get_value', {
-				doctype: 'LMS Assignment Submission',
-				filters: {
-					assignment: assignment,
-					member: userResource.data?.name,
-				},
-				fieldname: ['name'],
-			}).then((data) => {
-				let submission = data.name || 'new'
-				this.wrapper.innerHTML = `<iframe src="/lms/assignment-submission/${assignment}/${submission}?fromLesson=1" class="w-full h-[500px]"></iframe>`
+			const renderSubmission = (submission) => {
+				// The iframe is its own app instance, so Student View has to
+				// travel in the URL rather than through provide/inject.
+				const studentView = this.studentView ? '&studentView=1' : ''
+				const submissionPath = getLmsRoute(
+					`assignment-submission/${assignment}/${
+						submission || 'new'
+					}?fromLesson=1${studentView}`
+				)
+				this.wrapper.innerHTML = `<iframe src="${submissionPath}" class="w-full h-[500px]"></iframe>`
+			}
+			call('lms.lms.api.get_own_assignment_submission', {
+				assignment: assignment,
 			})
+				.then(renderSubmission)
+				.catch(() => renderSubmission('new'))
 			return
 		}
 		call('frappe.client.get_value', {
@@ -63,7 +69,7 @@ export class Assignment {
 			},
 			fieldname: ['title'],
 		}).then((data) => {
-			this.wrapper.innerHTML = `<div class='border rounded-md p-4 text-center bg-surface-menu-bar mb-4'>
+			this.wrapper.innerHTML = `<div class='border rounded-md p-4 text-center bg-surface-sidebar mb-4'>
 				<span class="font-medium">
 					Assignment: ${data.title}
 				</span>
@@ -84,6 +90,7 @@ export class Assignment {
 			},
 		})
 		app.use(translationPlugin)
+		app.use(router)
 		app.mount(this.wrapper)
 	}
 

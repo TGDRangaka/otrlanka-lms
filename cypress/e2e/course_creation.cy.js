@@ -1,167 +1,244 @@
 describe("Course Creation", () => {
-	it("creates a new course", () => {
-		cy.login();
-		cy.wait(500);
-		cy.visit("/lms/courses");
+	const courseTitle = "Test Course";
+	const courseSlug = "test-course";
 
-		// Close onboarding modal
+	before(() => {
+		cy.login();
+		cy.request({
+			url: "/api/method/frappe.client.delete",
+			method: "POST",
+			body: { doctype: "LMS Course", name: courseSlug },
+			failOnStatusCode: false,
+		});
+	});
+
+	it("creates a new course with settings", () => {
+		cy.login();
+		cy.visit("/lms/courses");
 		cy.closeOnboardingModal();
 
-		// Create a course
+		// Open New Course modal
 		cy.get("button").contains("Create").click();
-		cy.wait(500);
-		cy.url().should("include", "/courses/new/edit");
+		cy.contains('[role="menuitem"]', "New Course").click();
 
-		cy.get("label").contains("Title").type("Test Course");
-		cy.get("label")
-			.contains("Short Introduction")
-			.type("Test Course Short Introduction to test the UI");
-		cy.get("div[contenteditable=true").invoke(
-			"text",
-			"Test Course Description. I need a very big description to test the UI. This is a very big description. It contains more than once sentence. Its meant to be this long as this is a UI test. Its unbearably long and I'm not sure why I'm typing this much. I'm just going to keep typing until I feel like its long enough. I think its long enough now. I'm going to stop typing now."
-		);
-
-		cy.fixture("profile.png", "base64").then((fileContent) => {
-			cy.get("div")
-				.contains("Course Image")
-				.siblings("div")
-				.children('input[type="file"]')
-				.attachFile({
-					fileContent,
-					fileName: "profile.png",
-					mimeType: "image/png",
-					encoding: "base64",
-				});
-		});
-
-		cy.get("label")
-			.contains("Preview Video")
-			.type("https://www.youtube.com/embed/-LPmw2Znl2c");
-		cy.get("[id=tags]").type("Learning{enter}Frappe{enter}ERPNext{enter}");
-		cy.get("label")
-			.contains("Category")
-			.parent()
-			.within(() => {
-				cy.get("button").click();
-			});
-		cy.get("[id^=headlessui-combobox-option-")
+		cy.get("[data-dismissable-layer]")
+			.last()
 			.should("be.visible")
+			.within(() => {
+				cy.get("label")
+					.contains("Title")
+					.parent()
+					.find("input")
+					.type(courseTitle);
+
+				// Instructors: MultiSelect
+				cy.get("label")
+					.contains("Instructors")
+					.parent()
+					.find("button")
+					.first()
+					.click();
+			});
+
+		cy.get('[data-slot="content-body"] [data-slot="input"]')
+			.should("be.visible")
+			.type("frappe");
+		cy.get('[data-slot="content-body"] [role="option"]', { timeout: 10000 })
 			.first()
 			.click();
+		cy.get("body").type("{esc}");
 
-		/* Instructor */
-		cy.get("label")
-			.contains("Instructors")
-			.parent()
-			.within(() => {
-				cy.get("input").click().type("frappe");
-				cy.get("input")
-					.invoke("attr", "aria-controls")
-					.as("instructor_list_id");
-			});
-		cy.get("@instructor_list_id").then((instructor_list_id) => {
-			cy.get(`[id^=${instructor_list_id}`)
-				.should("be.visible")
-				.within(() => {
-					cy.get("[id^=headlessui-combobox-option-").first().click();
-				});
-		});
-
-		cy.get("label").contains("Published").click();
-		cy.get("label").contains("Published On").type("2021-01-01");
-		cy.button("Save").click();
-
-		// Add Chapter
-		cy.wait(1000);
-		cy.button("Add Chapter").click();
-
-		cy.wait(1000);
-		cy.get("[id^=headlessui-dialog-panel-")
+		cy.get("[data-dismissable-layer]")
+			.last()
 			.should("be.visible")
 			.within(() => {
-				cy.get("label").contains("Title").type("Test Chapter");
-				cy.button("Create").click();
+				// Thumbnail
+				cy.get('input[type="file"]').attachFile("profile.png", {
+					force: true,
+				});
+
+				// Short introduction
+				cy.get("label")
+					.contains("Short introduction")
+					.parent()
+					.find("textarea")
+					.type("Test Course Short Introduction to test the UI");
+
+				// Description
+				cy.get("div.ProseMirror").invoke(
+					"text",
+					"Test Course Description. I need a very big description to test the UI. This is a very big description. It contains more than once sentence. Its meant to be this long as this is a UI test. Its unbearably long and I'm not sure why I'm typing this much. I'm just going to keep typing until I feel like its long enough. I think its long enough now. I'm going to stop typing now."
+				);
+
+				cy.button("Save").click();
 			});
 
-		// Add Lesson
-		cy.wait(1000);
-		cy.button("Add Lesson").click();
-		cy.wait(1000);
-		cy.url().should("include", "/learn/1-1/edit");
-		cy.wait(1000);
-
-		cy.get("label").contains("Title").type("Test Lesson");
-		cy.get("#content .ce-block").type(
-			"{enter}This is an extremely big paragraph that is meant to test the UI. This is a very long paragraph. It contains more than once sentence. Its meant to be this long as this is a UI test. Its unbearably long and I'm not sure why I'm typing this much. I'm just going to keep typing until I feel like its long enough. I think its long enough now. I'm going to stop typing now."
+		// Redirect to course settings
+		cy.url({ timeout: 10000 }).should(
+			"include",
+			`/lms/courses/${courseSlug}`
 		);
-		cy.button("Save").click();
-
-		// View Course
-		cy.wait(1000);
-		cy.visit("/lms/courses");
 		cy.closeOnboardingModal();
 
-		cy.url().should("include", "/lms/courses");
-		cy.get(".grid a:first").within(() => {
-			cy.get("div").contains("Test Course");
-			cy.get("div").contains(
-				"Test Course Short Introduction to test the UI"
-			);
-			cy.get(".bg-cover")
-				.invoke("css", "background-image")
-				.should("include", "/files/profile");
-		});
-		cy.get(".grid a:first").click();
-		cy.url().should("include", "/lms/courses/test-course");
-		cy.get("div").contains("Test Course");
-		cy.get("div").contains("Test Course Short Introduction to test the UI");
-		cy.get("div").contains("Learning");
-		cy.get("div").contains("Frappe");
-		cy.get("div").contains("ERPNext");
+		// Configure settings
+		cy.get("button, [role=tab]").contains("Settings").click();
+
+		// Preview video: the redesigned field has a URL input (plus a hidden
+		// file input), so target the YouTube URL input by its placeholder.
+		cy.get("label")
+			.contains("Preview video")
+			.parent()
+			.find('input[placeholder="Paste a YouTube link"]')
+			.type("https://www.youtube.com/embed/-LPmw2Znl2c");
+
+		// Tags
+		cy.get("label")
+			.contains("Tags")
+			.parent()
+			.find("button")
+			.first()
+			.click();
+		const tagInput = '[data-slot="content-body"] [data-slot="input"]';
+		cy.get(tagInput).should("be.visible").type("Learning{enter}");
+		cy.get(tagInput).clear().type("Frappe{enter}");
+		cy.get(tagInput).clear().type("ERPNext{enter}");
+		cy.get("body").type("{esc}");
+
+		cy.button("Save").click();
+
+		// Publish
+		cy.get("header")
+			.find("button")
+			.contains(/^Publish$/)
+			.click();
+		cy.contains(/Course published/i, { timeout: 10000 }).should("exist");
+
+		// Reload and verify published state
+		cy.reload();
+		cy.closeOnboardingModal();
+		cy.get("header")
+			.contains(/^Published$/, { timeout: 10000 })
+			.should("exist");
+		cy.get("header")
+			.find("button")
+			.contains(/^Unpublish$/)
+			.should("exist");
+	});
+
+	it("adds a chapter and a lesson", () => {
+		cy.login();
+		cy.intercept(
+			"POST",
+			"**/api/method/lms.lms.utils.get_course_outline"
+		).as("outline");
+		cy.visit(`/lms/courses/${courseSlug}`);
+		cy.closeOnboardingModal();
+		cy.get("button, [role=tab]").contains("Course editor").click();
+		cy.closeOnboardingModal();
+		cy.wait("@outline", { timeout: 20000 });
+
+		// Add a chapter via the toolbar "Add" button (CourseEditor hides
+		// CourseOutline's own header). Scope to the chapter dialog by its Title
+		// field. The onboarding "Getting started" panel is also a dismissable
+		// layer, but it has no Title input.
+		cy.contains("button", "Add").click();
+		cy.get("[data-dismissable-layer]")
+			.filter(':has(label:contains("Title"))')
+			.should("be.visible")
+			.within(() => {
+				cy.get("label")
+					.contains("Title")
+					.parent()
+					.find("input")
+					.type("Test Chapter");
+				cy.button("Create").click();
+			});
+		cy.contains("Test Chapter", { timeout: 15000 }).should("exist");
+
+		// The onboarding help modal re-expands when the chapter step completes.
+		// Dismiss it before adding a lesson so it can't hijack the editor.
+		cy.closeOnboardingModal();
+
+		// "Add Lesson" creates an "Untitled lesson" and opens it in the editor with
+		// the title field focused (LessonForm focuses the title, not the block
+		// editor, for a new, empty lesson, so our keystrokes land in the title).
+		// Rename it inline; the debounced autosave persists via frappe.client.set_value.
+		cy.intercept("POST", "**/api/method/frappe.client.set_value").as(
+			"renameLesson"
+		);
+		cy.button("Add Lesson", { timeout: 10000 }).click();
+		cy.get("textarea.lesson-title", { timeout: 15000 })
+			.should("have.value", "Untitled lesson")
+			.clear()
+			.should("have.value", "")
+			.type("Test Lesson")
+			.should("have.value", "Test Lesson");
+		cy.wait("@renameLesson", { timeout: 15000 });
+		cy.contains(".outline-lesson", "Test Lesson", {
+			timeout: 15000,
+		}).should("exist");
+
+		// Regression: deleting the lesson open in the editor must drop back to the
+		// empty "choose a lesson" state. Add a throwaway lesson, delete it (the last
+		// row, just added), and assert the editor cleared and "Test Lesson" survived.
+		cy.button("Add Lesson", { timeout: 10000 }).click();
+		cy.get("textarea.lesson-title", { timeout: 15000 }).should(
+			"have.value",
+			"Untitled lesson"
+		);
+		cy.get(".outline-lesson")
+			.last()
+			.find(".lucide-trash-2")
+			.click({ force: true });
+		cy.contains("Delete this lesson?");
+		cy.get("[data-dismissable-layer]").contains("button", "Delete").click();
+		cy.contains("Lesson deleted successfully");
+		cy.contains("Select a lesson on the right to start editing.").should(
+			"be.visible"
+		);
+		cy.get(".outline-lesson").should("have.length", 1);
+		cy.contains(".outline-lesson", "Test Lesson").should("exist");
+	});
+
+	it("verifies the course overview", () => {
+		cy.login();
+		cy.visit(`/lms/courses/${courseSlug}`);
+		cy.closeOnboardingModal();
+
+		cy.url({ timeout: 10000 }).should(
+			"include",
+			`/lms/courses/${courseSlug}`
+		);
+		cy.contains(courseTitle);
+		cy.contains("Test Course Short Introduction to test the UI");
+		cy.contains("Learning");
 		cy.get("iframe").should(
 			"have.attr",
 			"src",
 			"https://www.youtube.com/embed/-LPmw2Znl2c"
 		);
+		// Chapter shows in the course content (the lesson was verified in the editor
+		// outline in the previous test).
+		cy.contains("Test Chapter", { timeout: 15000 }).should("exist");
+	});
 
-		// View Chapter
-		cy.get("div").contains("Test Chapter");
-		cy.get("[id^=headlessui-disclosure-panel-").within(() => {
-			cy.get("div").contains("Test Lesson").click();
+	it("deletes the course", () => {
+		cy.login();
+		cy.visit(`/lms/courses/${courseSlug}`);
+		cy.closeOnboardingModal();
+
+		cy.get("button, [role=tab]").contains("Settings").click();
+
+		cy.get("header")
+			.find('button[aria-haspopup="menu"]', { timeout: 10000 })
+			.first()
+			.click({ force: true });
+		cy.get("div[role=menu]").within(() => {
+			cy.contains('[role="menuitem"]', "Delete").click();
 		});
-		cy.wait(3000);
+		cy.get("span").contains("Delete").click();
 
-		// View Lesson
-		cy.url().should("include", "/learn/1-1");
-		cy.get("div").contains("Test Lesson");
-
-		cy.get("div").contains(
-			"This is an extremely big paragraph that is meant to test the UI. This is a very long paragraph. It contains more than once sentence. Its meant to be this long as this is a UI test. Its unbearably long and I'm not sure why I'm typing this much. I'm just going to keep typing until I feel like its long enough. I think its long enough now. I'm going to stop typing now."
-		);
-
-		// Add Discussion
-		cy.get("span").contains("Community").click();
-		cy.button("New Question").click();
-		cy.wait(500);
-		cy.get("[id^=headlessui-dialog-panel-").within(() => {
-			cy.get("label").contains("Title").type("Test Discussion");
-			cy.get("div[contenteditable=true]").invoke(
-				"text",
-				"This is a test discussion. This will check if the UI is working properly."
-			);
-			cy.button("Post").click();
-		});
-
-		// View Discussion
-		cy.wait(500);
-		cy.get("div").contains("Test Discussion").click();
-		cy.get("div[contenteditable=true").invoke(
-			"text",
-			"This is a test comment. This will check if the UI is working properly."
-		);
-
-		cy.get("div").contains(
-			"This is a test comment. This will check if the UI is working properly."
-		);
+		cy.url({ timeout: 10000 }).should("include", "/lms/courses");
+		cy.contains(courseTitle).should("not.exist");
 	});
 });

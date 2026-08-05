@@ -1,11 +1,6 @@
 <template>
-	<Dialog
-		v-model="show"
-		:options="{
-			title: __('Learning Consistency'),
-		}"
-	>
-		<template #body-content>
+	<Dialog v-model:open="show" :title="__('Learning Consistency')">
+		<template #default>
 			<div class="text-base">
 				<div class="text-center">
 					<div class="text-[30px]">🔥</div>
@@ -20,7 +15,7 @@
 							}}
 							{{ __(' you are on a') }}
 						</div>
-						<div class="font-semibold text-xl">
+						<div class="text-2xl-semibold text-ink-gray-9">
 							{{ streakInfo.data?.current_streak }} {{ __('day streak') }}
 						</div>
 					</div>
@@ -29,11 +24,11 @@
 				<div
 					class="grid grid-cols-2 bg-surface-gray-1 px-2.5 py-2 rounded-md mt-8"
 				>
-					<div class="space-y-1 border-r border-outline-gray-2 mr-4">
+					<div class="space-y-1 border-e border-outline-gray-2 me-4">
 						<div class="text-ink-gray-6">
 							{{ __('Current Streak') }}
 						</div>
-						<div class="font-semibold text-lg">
+						<div class="text-lg-semibold text-ink-gray-9">
 							{{ streakInfo.data?.current_streak }} {{ __('days') }}
 						</div>
 					</div>
@@ -41,7 +36,7 @@
 						<div class="text-ink-gray-6">
 							{{ __('Longest Streak') }}
 						</div>
-						<div class="font-semibold text-lg">
+						<div class="text-lg-semibold text-ink-gray-9">
 							{{ streakInfo.data?.longest_streak }} {{ __('days') }}
 						</div>
 					</div>

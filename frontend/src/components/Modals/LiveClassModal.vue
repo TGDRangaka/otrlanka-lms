@@ -1,19 +1,17 @@
 <template>
 	<Dialog
-		v-model="show"
-		:options="{
-			title: __('Create a Live Class'),
-			size: 'xl',
-			actions: [
-				{
-					label: 'Submit',
-					variant: 'solid',
-					onClick: ({ close }) => submitLiveClass(close),
-				},
-			],
-		}"
+		v-model:open="show"
+		:title="__('Create a Live Class')"
+		size="xl"
+		:actions="[
+			{
+				label: 'Submit',
+				variant: 'solid',
+				onClick: ({ close }) => submitLiveClass(close),
+			},
+		]"
 	>
-		<template #body-content>
+		<template #default>
 			<div class="flex flex-col gap-4">
 				<div class="grid grid-cols-2 gap-4">
 					<div class="space-y-4">
@@ -29,14 +27,12 @@
 							:label="__('Date')"
 							:required="true"
 						/>
-						<Tooltip :text="__('Duration of the live class in minutes')">
-							<FormControl
-								type="number"
-								v-model="liveClass.duration"
-								:label="__('Duration')"
-								:required="true"
-							/>
-						</Tooltip>
+						<FormControl
+							type="number"
+							v-model="liveClass.duration"
+							:label="__('Duration (in minutes)')"
+							:required="true"
+						/>
 					</div>
 					<div class="space-y-4">
 						<Tooltip
@@ -54,19 +50,15 @@
 							/>
 						</Tooltip>
 
-						<div class="space-y-1.5">
-							<label class="block text-ink-gray-5 text-xs" for="batchTimezone">
-								{{ __('Timezone') }}
-								<span class="text-ink-red-3">*</span>
-							</label>
-							<Autocomplete
-								@update:modelValue="(opt) => (liveClass.timezone = opt.value)"
-								:modelValue="liveClass.timezone"
-								:options="getTimezoneOptions()"
-								:required="true"
-							/>
-						</div>
+						<Combobox
+							:modelValue="liveClass.timezone"
+							:options="getTimezoneOptions()"
+							:label="__('Timezone')"
+							:required="true"
+							@update:modelValue="(value) => (liveClass.timezone = value)"
+						/>
 						<FormControl
+							v-if="props.conferencingProvider === 'Zoom'"
 							v-model="liveClass.auto_recording"
 							type="select"
 							:options="getRecordingOptions()"
@@ -85,11 +77,11 @@
 </template>
 <script setup>
 import {
+	Combobox,
 	Dialog,
 	createResource,
 	Tooltip,
 	FormControl,
-	Autocomplete,
 	toast,
 } from 'frappe-ui'
 import { reactive, inject, onMounted } from 'vue'
@@ -105,10 +97,9 @@ const props = defineProps({
 		type: String,
 		required: true,
 	},
-	zoomAccount: {
-		type: String,
-		required: true,
-	},
+	zoomAccount: String,
+	googleMeetAccount: String,
+	conferencingProvider: String,
 })
 
 let liveClass = reactive({
@@ -165,8 +156,23 @@ const createLiveClass = createResource({
 	},
 })
 
+const createGoogleMeetLiveClass = createResource({
+	url: 'lms.lms.doctype.lms_batch.lms_batch.create_google_meet_live_class',
+	makeParams(values) {
+		return {
+			batch_name: values.batch,
+			google_meet_account: props.googleMeetAccount,
+			...values,
+		}
+	},
+})
+
 const submitLiveClass = (close) => {
-	return createLiveClass.submit(liveClass, {
+	const resource =
+		props.conferencingProvider === 'Google Meet'
+			? createGoogleMeetLiveClass
+			: createLiveClass
+	return resource.submit(liveClass, {
 		validate() {
 			validateFormFields()
 		},
@@ -177,6 +183,7 @@ const submitLiveClass = (close) => {
 		},
 		onError(err) {
 			toast.error(err.messages?.[0] || err)
+			console.error(err)
 		},
 	})
 }

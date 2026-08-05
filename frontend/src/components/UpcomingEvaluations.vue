@@ -1,93 +1,100 @@
 <template>
 	<div v-if="!forHome || (forHome && upcoming_evals.data?.length)">
 		<div class="flex items-center justify-between mb-4">
-			<div class="text-lg text-ink-gray-9 font-semibold">
+			<div class="text-lg-semibold text-ink-gray-9">
 				{{ __('Upcoming Evaluations') }}
 			</div>
-			<Button
-				v-if="
-					upcoming_evals.data?.length != evaluationCourses.length && !forHome
-				"
-				@click="openEvalModal"
-			>
-				{{ __('Schedule Evaluation') }}
+			<Button v-if="canScheduleEvals" @click="openEvalModal">
+				{{ __('Schedule') }}
 			</Button>
 		</div>
+		<div
+			v-if="endDate && !endDateHasPassed"
+			class="text-sm leading-5 bg-surface-amber-1 text-ink-amber-6 p-2 rounded-md mb-4"
+		>
+			{{ __('The last day to schedule your evaluations is ') }}
+			<span class="font-medium">
+				{{ dayjs(endDate).format('DD MMMM YYYY') }} </span
+			>.
+			{{ __('Please make sure to schedule your evaluation before this date.') }}
+		</div>
+		<div
+			v-else-if="endDateHasPassed"
+			class="text-sm leading-5 bg-surface-red-1 text-ink-red-6 p-2 rounded-md mb-4"
+		>
+			{{
+				__(
+					'The deadline to schedule evaluations has passed. Please contact the Instructor for assistance.'
+				)
+			}}
+		</div>
 		<div v-if="upcoming_evals.data?.length">
-			<div class="grid gap-4" :class="forHome ? 'grid-cols-2' : 'grid-cols-3'">
-				<div v-for="evl in upcoming_evals.data">
-					<div class="border text-ink-gray-7 rounded-md p-3">
+			<div
+				class="grid gap-4"
+				:class="forHome ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-1'"
+			>
+				<div v-for="evl in upcoming_evals.data" :key="evl.name">
+					<div
+						class="border hover:border-outline-gray-3 text-ink-gray-7 rounded-md p-3"
+					>
 						<div class="flex justify-between mb-3">
-							<span class="text-lg font-semibold text-ink-gray-9 leading-5">
+							<span class="font-semibold text-ink-gray-9 leading-5">
 								{{ evl.course_title }}
 							</span>
-							<Menu
+							<Dropdown
 								v-if="evl.date > dayjs().format()"
-								as="div"
-								class="relative inline-block text-left"
+								:options="[
+									{
+										label: __('Cancel'),
+										icon: 'lucide-ban',
+										onClick() {
+											cancelEvaluation(evl)
+										},
+									},
+								]"
+								placement="left"
+								side="left"
 							>
-								<div>
-									<MenuButton class="inline-flex w-full justify-center">
-										<EllipsisVertical class="w-4 h-4 stroke-1.5" />
-									</MenuButton>
-								</div>
-
-								<transition
-									enter-active-class="transition duration-100 ease-out"
-									enter-from-class="transform scale-95 opacity-0"
-									enter-to-class="transform scale-100 opacity-100"
-									leave-active-class="transition duration-75 ease-in"
-									leave-from-class="transform scale-100 opacity-100"
-									leave-to-class="transform scale-95 opacity-0"
-								>
-									<MenuItems
-										class="absolute mt-2 w-32 rounded-md bg-surface-white border p-1.5"
-									>
-										<MenuItem v-slot="{ active }">
-											<Button
-												variant="ghost"
-												class="w-full"
-												@click="cancelEvaluation(evl)"
-											>
-												<template #prefix>
-													<Ban
-														:active="active"
-														class="size-4 stroke-1.5"
-														aria-hidden="true"
-													/>
-												</template>
-												{{ __('Cancel') }}
-											</Button>
-										</MenuItem>
-									</MenuItems>
-								</transition>
-							</Menu>
+								<template v-slot="{ open }">
+									<Button variant="ghost" :label="__('Options')">
+										<template #icon>
+											<span class="lucide-ellipsis-vertical w-4 h-4" />
+										</template>
+									</Button>
+								</template>
+							</Dropdown>
 						</div>
 						<div class="flex items-center mb-2">
-							<Calendar class="w-4 h-4 stroke-1.5" />
-							<span class="ml-2">
+							<span class="lucide-calendar w-4 h-4" />
+							<span class="ms-2">
 								{{ dayjs(evl.date).format('DD MMMM YYYY') }}
 							</span>
 						</div>
 						<div class="flex items-center mb-2">
-							<Clock class="w-4 h-4 stroke-1.5" />
-							<span class="ml-2">
+							<span class="lucide-clock w-4 h-4" />
+							<span class="ms-2">
 								{{ formatTime(evl.start_time) }}
 							</span>
 						</div>
+						<div v-if="evl.timezone" class="flex items-center mb-2">
+							<span class="lucide-globe w-4 h-4" />
+							<span class="ms-2">
+								{{ formatTimezone(evl.timezone, evl.date) }}
+							</span>
+						</div>
 						<div class="flex items-center">
-							<GraduationCap class="w-4 h-4 stroke-1.5" />
-							<span class="ml-2">
+							<span class="lucide-graduation-cap w-4 h-4" />
+							<span class="ms-2">
 								{{ evl.evaluator_name }}
 							</span>
 						</div>
 						<div
 							v-if="evl.google_meet_link"
-							class="flex items-center justify-between space-x-2 mt-4"
+							class="flex items-center justify-between gap-x-2 mt-4"
 						>
 							<Button @click="openEvalCall(evl)" class="w-full">
 								<template #prefix>
-									<HeadsetIcon class="w-4 h-4 stroke-1.5" />
+									<span class="lucide-headset w-4 h-4" />
 								</template>
 								{{ __('Join Call') }}
 							</Button>
@@ -96,7 +103,7 @@
 				</div>
 			</div>
 		</div>
-		<div v-else class="text-ink-gray-5">
+		<div v-else-if="!endDateHasPassed" class="text-ink-gray-7">
 			{{ __('Schedule an evaluation to get certified.') }}
 		</div>
 	</div>
@@ -109,21 +116,14 @@
 	/>
 </template>
 <script setup>
-import {
-	Ban,
-	Calendar,
-	Clock,
-	GraduationCap,
-	HeadsetIcon,
-	EllipsisVertical,
-} from 'lucide-vue-next'
 import { inject, ref, getCurrentInstance, computed } from 'vue'
 import { formatTime } from '@/utils'
-import { Button, createResource, call } from 'frappe-ui'
+import { formatTimezone } from '@/utils/timezone'
+import { Button, createListResource, call, Dropdown, toast } from 'frappe-ui'
 import EvaluationModal from '@/components/Modals/EvaluationModal.vue'
-import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 
 const dayjs = inject('$dayjs')
+const user = inject('$user')
 const showEvalModal = ref(false)
 const app = getCurrentInstance()
 const { $dialog } = app.appContext.config.globalProperties
@@ -147,12 +147,29 @@ const props = defineProps({
 	},
 })
 
-const upcoming_evals = createResource({
-	url: 'lms.lms.utils.get_upcoming_evals',
-	params: {
-		courses: props.courses.map((course) => course.course),
-		batch: props.batch,
+const upcoming_evals = createListResource({
+	doctype: 'LMS Certificate Request',
+	filters: {
+		course: props.courses?.length
+			? ['in', props.courses.map((course) => course.course)]
+			: undefined,
+		batch_name: props.batch || undefined,
+		status: 'Upcoming',
+		member: user?.data?.name,
+		date: ['>=', dayjs().format('YYYY-MM-DD')],
 	},
+	fields: [
+		'name',
+		'date',
+		'start_time',
+		'timezone',
+		'evaluator_name',
+		'course_title',
+		'member',
+		'member_name',
+		'google_meet_link',
+	],
+	orderBy: 'date',
 	auto: true,
 })
 
@@ -166,13 +183,25 @@ const openEvalCall = (evl) => {
 
 const evaluationCourses = computed(() => {
 	return props.courses.filter((course) => {
-		return course.evaluator != ''
+		return course.evaluator && course.evaluator != ''
 	})
+})
+
+const canScheduleEvals = computed(() => {
+	return (
+		upcoming_evals.data?.length != evaluationCourses.value?.length &&
+		!props.forHome &&
+		!endDateHasPassed.value
+	)
+})
+
+const endDateHasPassed = computed(() => {
+	return dayjs().isSameOrAfter(dayjs(props.endDate))
 })
 
 const cancelEvaluation = (evl) => {
 	$dialog({
-		title: __('Cancel this evaluation?'),
+		title: __('Confirm Cancellation?'),
 		message: __(
 			'Are you sure you want to cancel this evaluation? This action cannot be undone.'
 		),
@@ -182,11 +211,15 @@ const cancelEvaluation = (evl) => {
 				theme: 'red',
 				variant: 'solid',
 				onClick(close) {
-					call('lms.lms.api.cancel_evaluation', { evaluation: evl }).then(
-						() => {
+					call('lms.lms.api.cancel_evaluation', { evaluation: evl })
+						.then(() => {
 							upcoming_evals.reload()
-						}
-					)
+							toast.success(__('Evaluation cancelled successfully'))
+						})
+						.catch((err) => {
+							toast.error(__(err.messages?.[0] || err))
+							console.error(err)
+						})
 					close()
 				},
 			},

@@ -5,6 +5,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+from lms.lms.utils import guest_access_allowed
+
 
 class LMSProgram(Document):
 	def validate(self):
@@ -17,7 +19,7 @@ class LMSProgram(Document):
 		duplicates = {course for course in courses if courses.count(course) > 1}
 		if len(duplicates):
 			frappe.throw(
-				_("Course {0} has already been added to this batch.").format(
+				_("Course {0} has already been added to this program.").format(
 					frappe.bold(next(iter(duplicates)))
 				)
 			)
@@ -27,7 +29,7 @@ class LMSProgram(Document):
 		duplicates = {member for member in members if members.count(member) > 1}
 		if len(duplicates):
 			frappe.throw(
-				_("Member {0} has already been added to this batch.").format(
+				_("Member {0} has already been added to this program.").format(
 					frappe.bold(next(iter(duplicates)))
 				)
 			)
@@ -41,3 +43,27 @@ class LMSProgram(Document):
 
 		if self.member_count != member_count:
 			self.member_count = member_count
+
+
+def has_permission(doc, ptype="read", user=None):
+	user = user or frappe.session.user
+
+	if user == "Guest" and not guest_access_allowed():
+		return False
+
+	roles = frappe.get_roles(user)
+	if "Moderator" in roles or "Course Creator" in roles:
+		return True
+
+	if ptype not in ("read", "select", "print"):
+		return False
+
+	is_enrolled = frappe.db.exists("LMS Program Member", {"parent": doc.name, "member": user})
+	if is_enrolled:
+		return True
+
+	is_program_published = frappe.db.get_value("LMS Program", doc.name, "published")
+	if is_program_published:
+		return True
+
+	return False

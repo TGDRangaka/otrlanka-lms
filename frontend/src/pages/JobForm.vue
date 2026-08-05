@@ -1,20 +1,27 @@
 <template>
 	<div class="">
-		<header
-			class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
-		>
-			<Breadcrumbs :items="breadcrumbs" />
-			<Button variant="solid" @click="saveJob()">
-				{{ __('Save') }}
-			</Button>
-		</header>
-		<div class="py-5">
-			<div class="container border-b mb-4 pb-5">
-				<div class="text-lg font-semibold mb-4">
-					{{ __('Job Details') }}
-				</div>
-				<div class="grid grid-cols-2 gap-5">
-					<div class="space-y-4">
+		<PageHeader :breadcrumbs="breadcrumbs">
+			<template #actions>
+				<Badge v-if="isDirty" theme="orange">
+					{{ __('Not Saved') }}
+				</Badge>
+				<ShortcutTooltip :label="__('Save')" combo="Mod+S" :disabled="isMobile">
+					<HeaderButton
+						:label="__('Save')"
+						icon="lucide-save"
+						variant="solid"
+						@click="saveJob()"
+					/>
+				</ShortcutTooltip>
+			</template>
+		</PageHeader>
+		<div class="">
+			<div class="grid grid-cols-1 gap-5 px-5 lg:grid-cols-[70%,30%]">
+				<div class="space-y-5 pt-5">
+					<h2 class="text-ink-gray-9 font-semibold">
+						{{ __('Job Details') }}
+					</h2>
+					<div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
 						<FormControl
 							v-model="job.job_title"
 							:label="__('Title')"
@@ -27,8 +34,43 @@
 							:options="jobTypes"
 							:required="true"
 						/>
+						<FormControl
+							v-model="job.work_mode"
+							:label="__('Work Mode')"
+							type="select"
+							:options="workModes"
+							:required="true"
+						/>
 					</div>
-					<div class="space-y-4">
+					<div class="space-y-1.5">
+						<InputLabel
+							:id="descriptionLabelId"
+							:label="__('Description')"
+							:required="true"
+						/>
+						<RichTextEditor
+							:content="job.description"
+							@change="(val) => (job.description = val)"
+							:editable="true"
+							:fixedMenu="true"
+							editorClass="prose-sm max-w-none border-b border-x border-outline-elevation-2 bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[20rem] max-h-[70vh] overflow-y-auto mb-4"
+						/>
+					</div>
+				</div>
+				<div class="border-t lg:border-s lg:border-t-0 lg:h-[93vh]">
+					<div v-if="jobName != 'new'" class="p-5 space-y-5 border-b">
+						<FormControl
+							v-model="job.status"
+							:label="__('Status')"
+							type="select"
+							:options="jobStatuses"
+							:required="true"
+						/>
+					</div>
+					<div class="p-5 space-y-5 border-b">
+						<h2 class="text-ink-gray-9 font-semibold">
+							{{ __('Location') }}
+						</h2>
 						<FormControl
 							v-model="job.location"
 							:label="__('City')"
@@ -40,23 +82,11 @@
 							:label="__('Country')"
 							:required="true"
 						/>
-						<FormControl
-							v-if="jobName != 'new'"
-							v-model="job.status"
-							:label="__('Status')"
-							type="select"
-							:options="jobStatuses"
-							:required="true"
-						/>
 					</div>
-				</div>
-			</div>
-			<div class="container border-b mb-4 pb-5">
-				<div class="text-lg font-semibold mb-4">
-					{{ __('Company Details') }}
-				</div>
-				<div class="grid grid-cols-2 gap-5">
-					<div>
+					<div class="p-5 space-y-5">
+						<h2 class="text-ink-gray-9 font-semibold">
+							{{ __('Company Details') }}
+						</h2>
 						<FormControl
 							v-model="job.company_name"
 							:label="__('Company Name')"
@@ -68,94 +98,55 @@
 							:label="__('Company Website')"
 							:required="true"
 						/>
-					</div>
-					<div>
 						<FormControl
 							v-model="job.company_email_address"
 							:label="__('Company Email Address')"
 							class="mb-4"
 							:required="true"
 						/>
-						<label class="block text-ink-gray-5 text-xs mb-1 mt-4">
-							{{ __('Company Logo') }}
-							<span class="text-ink-red-3">*</span>
-						</label>
-						<FileUploader
-							v-if="!job.image"
-							:fileTypes="['image/*']"
-							:validateFile="validateFile"
-							@success="(file) => saveImage(file)"
-						>
-							<template
-								v-slot="{ file, progress, uploading, openFileSelector }"
-							>
-								<div class="mb-4">
-									<Button @click="openFileSelector" :loading="uploading">
-										{{
-											uploading ? `Uploading ${progress}%` : 'Upload an image'
-										}}
-									</Button>
-								</div>
-							</template>
-						</FileUploader>
-						<div v-else class="">
-							<div class="flex items-center">
-								<div class="border rounded-md p-2 mr-2">
-									<FileText class="h-5 w-5 stroke-1.5 text-ink-gray-7" />
-								</div>
-								<div class="flex flex-col">
-									<span>
-										{{ job.image.file_name }}
-									</span>
-									<span class="text-sm text-ink-gray-4 mt-1">
-										{{ getFileSize(job.image.file_size) }}
-									</span>
-								</div>
-								<X
-									@click="removeImage()"
-									class="bg-surface-gray-3 rounded-md cursor-pointer stroke-1.5 w-5 h-5 p-1 ml-4"
-								/>
-							</div>
-						</div>
+						<Uploader
+							v-model="job.company_logo"
+							:label="__('Company Logo')"
+							:required="true"
+						/>
 					</div>
 				</div>
-			</div>
-			<div class="container mt-4">
-				<label class="block text-ink-gray-5 text-xs mb-1">
-					{{ __('Description') }}
-					<span class="text-ink-red-3">*</span>
-				</label>
-				<TextEditor
-					:content="job.description"
-					@change="(val) => (job.description = val)"
-					:editable="true"
-					:fixedMenu="true"
-					editorClass="prose-sm max-w-none border-b border-x bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem] mb-4"
-				/>
 			</div>
 		</div>
 	</div>
 </template>
 <script setup>
 import {
-	Breadcrumbs,
+	Badge,
+	call,
 	FormControl,
-	createResource,
-	Button,
-	TextEditor,
-	FileUploader,
+	createDocumentResource,
 	usePageMeta,
 	toast,
 } from 'frappe-ui'
-import { computed, onMounted, reactive, inject } from 'vue'
-import { FileText, X } from 'lucide-vue-next'
+import { computed, inject, onMounted, reactive, ref, useId, watch } from 'vue'
 import { sessionStore } from '@/stores/session'
 import { useRouter } from 'vue-router'
-import { getFileSize, validateFile } from '@/utils'
+import { sanitizeHTML } from '@/utils'
+import { useScreenSize } from '@/utils/composables'
+import Uploader from '@/components/Controls/Uploader.vue'
+import PageHeader from '@/components/Layouts/PageHeader.vue'
+import HeaderButton from '@/components/HeaderButton.vue'
+import ShortcutTooltip from '@/components/ShortcutTooltip.vue'
+import {
+	useKeyboardShortcuts,
+	saveShortcut,
+} from '@/composables/useKeyboardShortcuts'
+import RichTextEditor from '@/components/RichTextEditor.vue'
+import { InputLabel } from '@/components/Form/labeling'
 
 const user = inject('$user')
 const router = useRouter()
 const { brand } = sessionStore()
+const { isMobile } = useScreenSize()
+const descriptionLabelId = useId()
+const isDirty = ref(false)
+const originalJobData = ref(null)
 
 const props = defineProps({
 	jobName: {
@@ -164,83 +155,75 @@ const props = defineProps({
 	},
 })
 
-const newJob = createResource({
-	url: 'frappe.client.insert',
-	makeParams(values) {
-		return {
-			doc: {
-				doctype: 'Job Opportunity',
-				company_logo: job.image?.file_url,
-				...job,
-			},
-		}
-	},
-})
-
-const updateJob = createResource({
-	url: 'frappe.client.set_value',
-	makeParams(values) {
-		return {
-			doctype: 'Job Opportunity',
-			name: props.jobName,
-			fieldname: {
-				company_logo: job.image.file_url,
-				...job,
-			},
-		}
-	},
-})
-
-const jobDetail = createResource({
-	url: 'frappe.client.get',
-	makeParams(values) {
-		return {
-			doctype: 'Job Opportunity',
-			name: props.jobName,
-		}
-	},
-	onSuccess(data) {
-		Object.keys(data).forEach((key) => {
-			if (Object.hasOwn(job, key)) job[key] = data[key]
+onMounted(() => {
+	if (!user.data) {
+		router.push({
+			name: 'Jobs',
 		})
-		if (data.company_logo) imageResource.reload({ image: data.company_logo })
-	},
+	}
+
+	if (props.jobName != 'new') jobDetails.reload()
 })
 
-const imageResource = createResource({
-	url: 'lms.lms.api.get_file_info',
-	makeParams(values) {
-		return {
-			file_url: values.image,
-		}
-	},
-	auto: false,
-	onSuccess(data) {
-		job.image = data
-	},
+useKeyboardShortcuts({
+	ignoreTyping: false,
+	shortcuts: [saveShortcut(() => saveJob())],
 })
 
 const job = reactive({
 	job_title: '',
+	type: '',
+	work_mode: '',
 	location: '',
 	country: '',
-	type: 'Full Time',
 	status: 'Open',
+	description: '',
 	company_name: '',
 	company_website: '',
-	image: null,
-	description: '',
 	company_email_address: '',
+	company_logo: '',
 })
 
-onMounted(() => {
-	if (!user.data) window.location.href = '/login'
-
-	if (props.jobName != 'new') jobDetail.reload()
+const jobDetails = createDocumentResource({
+	doctype: 'Job Opportunity',
+	name: props.jobName != 'new' ? props.jobName : undefined,
+	onError(err) {
+		toast.error(err.messages?.[0] || err)
+		console.error(err)
+	},
+	auto: props.jobName != 'new',
 })
+
+watch(
+	() => jobDetails?.doc,
+	() => {
+		if (!jobDetails.doc) return
+		if (jobDetails.doc.owner != user.data?.name && !user.data?.is_moderator) {
+			router.push({
+				name: 'Jobs',
+			})
+		}
+
+		if (jobDetails.doc) {
+			Object.assign(job, jobDetails.doc)
+			originalJobData.value = JSON.parse(JSON.stringify(jobDetails.doc))
+		}
+	}
+)
+
+watch(
+	job,
+	() => {
+		isDirty.value = Object.keys(job).some((key) => {
+			return job[key] != originalJobData.value?.[key]
+		})
+	},
+	{ deep: true }
+)
 
 const saveJob = () => {
-	if (jobDetail.data) {
+	validateJobFields()
+	if (jobDetails?.doc) {
 		editJobDetails()
 	} else {
 		createNewJob()
@@ -248,76 +231,95 @@ const saveJob = () => {
 }
 
 const createNewJob = () => {
-	newJob.submit(
-		{},
-		{
-			onSuccess(data) {
-				router.push({
-					name: 'JobDetail',
-					params: {
-						job: data.name,
-					},
-				})
-			},
-			onError(err) {
-				toast.error(err.messages?.[0] || err)
-			},
-		}
-	)
+	call('frappe.client.insert', {
+		doc: {
+			doctype: 'Job Opportunity',
+			company_logo: job.company_logo,
+			...job,
+		},
+	})
+		.then((data) => {
+			router.push({
+				name: 'JobDetail',
+				params: {
+					job: data.name,
+				},
+			})
+		})
+		.catch((err) => {
+			toast.error(err.messages?.[0] || err)
+			console.error(err)
+		})
 }
 
 const editJobDetails = () => {
-	updateJob.submit(
-		{},
+	jobDetails.setValue.submit(
+		{
+			company_logo: job.company_logo,
+			...job,
+		},
 		{
 			onSuccess(data) {
+				jobDetails.reload()
 				router.push({
 					name: 'JobDetail',
 					params: {
-						job: data.name,
+						job: props.jobName,
 					},
 				})
 			},
 			onError(err) {
 				toast.error(err.messages?.[0] || err)
+				console.error(err)
 			},
 		}
 	)
 }
 
-const saveImage = (file) => {
-	job.image = file
-}
-
-const removeImage = () => {
-	job.image = null
+const validateJobFields = () => {
+	Object.keys(job).forEach((key) => {
+		if (typeof job[key] === 'string') {
+			job[key] = sanitizeHTML(job[key])
+		}
+	})
 }
 
 const jobTypes = computed(() => {
 	return [
-		{ label: 'Full Time', value: 'Full Time' },
-		{ label: 'Part Time', value: 'Part Time' },
-		{ label: 'Contract', value: 'Contract' },
-		{ label: 'Freelance', value: 'Freelance' },
+		{ label: __('Full Time'), value: 'Full Time' },
+		{ label: __('Part Time'), value: 'Part Time' },
+		{ label: __('Contract'), value: 'Contract' },
+		{ label: __('Freelance'), value: 'Freelance' },
+	]
+})
+
+const workModes = computed(() => {
+	return [
+		{ label: __('On site'), value: 'On-site' },
+		{ label: __('Hybrid'), value: 'Hybrid' },
+		{ label: __('Remote'), value: 'Remote' },
 	]
 })
 
 const jobStatuses = computed(() => {
 	return [
-		{ label: 'Open', value: 'Open' },
-		{ label: 'Closed', value: 'Closed' },
+		{ label: __('Open'), value: 'Open' },
+		{ label: __('Closed'), value: 'Closed' },
 	]
 })
 
 const breadcrumbs = computed(() => {
 	let crumbs = [
 		{
-			label: 'Jobs',
+			label: __('Jobs'),
 			route: { name: 'Jobs' },
 		},
 		{
-			label: props.jobName == 'new' ? 'New Job' : 'Edit Job',
-			route: { name: 'JobForm' },
+			label: props.jobName == 'new' ? __('New Job') : jobDetails.doc?.job_title,
+			route:
+				props.jobName == 'new'
+					? {}
+					: { name: 'JobDetail', params: { job: props.jobName } },
 		},
 	]
 	return crumbs
@@ -325,7 +327,7 @@ const breadcrumbs = computed(() => {
 
 usePageMeta(() => {
 	return {
-		title: props.jobName == 'new' ? 'New Job' : jobDetail.data?.title,
+		title: props.jobName == 'new' ? __('New Job') : jobDetails.doc?.job_title,
 		icon: brand.favicon,
 	}
 })

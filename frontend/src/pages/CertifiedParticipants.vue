@@ -1,130 +1,140 @@
 <template>
-	<header
-		class="sticky flex items-center justify-between top-0 z-10 border-b bg-surface-white px-3 py-2.5 sm:px-5"
+	<ListPage
+		:breadcrumbs="breadcrumbs"
+		:rows="rows"
+		:total-count="memberCount"
+		:loading="participants.list.loading"
+		:has-next-page="participants.hasNextPage"
+		row-key="key"
+		v-model:page-length="pageLength"
+		empty-name="Certified Members"
+		empty-icon="lucide-badge-check"
+		@load-more="participants.next()"
 	>
-		<Breadcrumbs :items="breadcrumbs" />
-		<router-link :to="{ name: 'Batches', query: { certification: true } }">
-			<Button>
+		<template #actions>
+			<router-link :to="{ name: 'Courses', query: { certification: true } }">
+				<Button>
+					<template #prefix>
+						<span class="lucide-graduation-cap size-4" />
+					</template>
+					{{ __('Get Certified') }}
+				</Button>
+			</router-link>
+		</template>
+
+		<template #name> {{ memberCount }} {{ __('Certified Members') }} </template>
+
+		<template #filters>
+			<FormControl
+				v-model="nameFilter"
+				:placeholder="__('Search')"
+				:aria-label="__('Search')"
+				type="text"
+				@input="updateParticipants()"
+			>
 				<template #prefix>
-					<GraduationCap class="h-4 w-4 stroke-1.5" />
+					<span class="lucide-search size-4 text-ink-gray-5" />
 				</template>
-				{{ __('Get Certified') }}
-			</Button>
-		</router-link>
-	</header>
-	<div class="mx-auto w-full max-w-4xl pt-6 pb-10">
-		<div class="flex flex-col md:flex-row justify-between mb-4 px-3">
-			<div class="text-xl font-semibold text-ink-gray-7 mb-4 md:mb-0">
-				{{ memberCount }} {{ __('certified members') }}
-			</div>
-			<div class="grid grid-cols-2 gap-2">
-				<FormControl
-					v-model="nameFilter"
-					:placeholder="__('Search by Name')"
-					type="text"
-					class="min-w-40 lg:min-w-0 lg:w-32 xl:w-40"
-					@input="updateParticipants()"
-				/>
-				<div
-					v-if="categories.data?.length"
-					class="min-w-40 lg:min-w-0 lg:w-32 xl:w-40"
-				>
-					<Select
-						v-model="currentCategory"
-						:options="categories.data"
-						:placeholder="__('Category')"
-						@change="updateParticipants()"
-					/>
-				</div>
-			</div>
-		</div>
-		<div v-if="participants.data?.length" class="divide-y">
-			<template v-for="participant in participants.data">
-				<router-link
-					:to="{
-						name: 'ProfileCertificates',
-						params: {
-							username: participant.username,
-						},
-					}"
-					class="flex sm:rounded px-3 py-2 sm:h-15 hover:bg-surface-gray-2"
-				>
-					<div class="flex items-center w-full space-x-3">
-						<Avatar
-							:image="participant.user_image"
-							class="size-8 rounded-full object-contain"
-							:label="participant.full_name"
-							size="2xl"
-						/>
-						<div class="flex flex-col md:flex-row w-full">
-							<div class="flex-1">
-								<div class="text-base font-medium text-ink-gray-8">
-									{{ participant.full_name }}
-								</div>
-								<div
-									v-if="participant.headline"
-									class="mt-1.5 text-base text-ink-gray-5"
-								>
-									{{ participant.headline }}
-								</div>
-							</div>
-							<div
-								class="flex items-center space-x-3 md:space-x-24 text-sm md:text-base mt-1.5"
-							>
-								<div class="text-ink-gray-5">
-									{{ participant.certificate_count }}
-									{{
-										participant.certificate_count > 1
-											? __('certificates')
-											: __('certificate')
-									}}
-								</div>
-								<span class="text-ink-gray-4 md:hidden">·</span>
-								<div class="text-ink-gray-5">
-									{{ dayjs(participant.issue_date).format('DD MMM YYYY') }}
-								</div>
-							</div>
+			</FormControl>
+			<ClearableCombobox
+				v-if="categories.data?.length"
+				v-model="currentCategory"
+				:options="categories.data.filter((c) => c.value)"
+				:placeholder="__('Category')"
+				@update:modelValue="updateParticipants()"
+			/>
+			<ToggleFilter
+				:modelValue="openToWork"
+				:label="__('Open to Work')"
+				theme="green"
+				@update:modelValue="setOpenToWork"
+			/>
+			<ToggleFilter
+				:modelValue="hiring"
+				:label="__('Hiring')"
+				theme="blue"
+				@update:modelValue="setHiring"
+			/>
+		</template>
+
+		<template #card="{ row }">
+			<component
+				:is="row.username ? 'router-link' : 'div'"
+				:to="profileRoute(row.username, 'ProfileAbout')"
+				class="flex flex-col rounded-lg border p-3 text-ink-gray-9"
+				:class="
+					row.username ? 'cursor-pointer hover:border-outline-gray-3' : ''
+				"
+			>
+				<div class="flex items-center gap-x-4">
+					<UserAvatar :user="row" size="2xl" />
+					<div class="flex flex-col">
+						<div class="line-clamp-1 font-semibold">
+							{{ row.full_name }}
+						</div>
+						<div class="mb-4 line-clamp-1 text-sm leading-5">
+							{{ row.headline || 'Joined ' + dayjs(row.creation).fromNow() }}
 						</div>
 					</div>
-				</router-link>
-			</template>
-		</div>
-		<EmptyState v-else type="Certified Members" />
-		<div
-			v-if="!participants.list.loading && participants.hasNextPage"
-			class="flex justify-center mt-5"
-		>
-			<Button @click="participants.next()">
-				{{ __('Load More') }}
-			</Button>
-		</div>
-	</div>
+				</div>
+				<div class="mt-auto space-y-2 text-ink-gray-7">
+					<div>
+						<Badge size="lg">
+							<template #prefix>
+								<span class="lucide-graduation-cap size-3" />
+							</template>
+							{{ row.certificate_count }}
+							{{
+								row.certificate_count > 1
+									? __('certificates')
+									: __('certificate')
+							}}
+						</Badge>
+					</div>
+					<div class="flex items-center gap-x-1">
+						<span class="lucide-calendar me-1 h-4 w-4" />
+						<span>{{ dayjs(row.issue_date).format('DD MMM YYYY') }}</span>
+					</div>
+				</div>
+			</component>
+		</template>
+	</ListPage>
 </template>
 <script setup>
 import {
-	Avatar,
-	Breadcrumbs,
+	Badge,
 	Button,
 	call,
 	createListResource,
 	FormControl,
-	Select,
 	usePageMeta,
 } from 'frappe-ui'
+import ClearableCombobox from '@/components/Controls/ClearableCombobox.vue'
+import ToggleFilter from '@/components/Controls/ToggleFilter.vue'
 import { computed, inject, onMounted, ref } from 'vue'
-import { GraduationCap } from 'lucide-vue-next'
 import { sessionStore } from '../stores/session'
-import EmptyState from '@/components/EmptyState.vue'
+import { useRouter } from 'vue-router'
+import UserAvatar from '@/components/UserAvatar.vue'
+import ListPage from '@/components/Layouts/ListPage.vue'
+import { profileRoute } from '@/utils/routes'
 
-const currentCategory = ref('')
 const filters = ref({})
+const currentCategory = ref('')
 const nameFilter = ref('')
+const openToWork = ref(false)
+const hiring = ref(false)
 const { brand } = sessionStore()
 const memberCount = ref(0)
 const dayjs = inject('$dayjs')
+const user = inject('$user')
+const router = useRouter()
 
 onMounted(() => {
-	getMemberCount()
+	if (!user.data) {
+		router.push({ name: 'Courses' })
+		return
+	}
+	setFiltersFromQuery()
 	updateParticipants()
 })
 
@@ -132,8 +142,29 @@ const participants = createListResource({
 	doctype: 'LMS Certificate',
 	url: 'lms.lms.api.get_certified_participants',
 	start: 0,
+	pageLength: 24,
 	cache: ['certified_participants'],
-	pageLength: 100,
+})
+
+// get_certified_participants pops `member`, so no row carries a `name` and
+// ListPage's default row key would be "undefined" for every card. `username` is
+// unique on User, but Frappe leaves it blank when it collides, so fall back to
+// the position to keep the keys distinct.
+const rows = computed(() =>
+	(participants.data || []).map((participant, index) => ({
+		...participant,
+		key: participant.username ? `u:${participant.username}` : `i:${index}`,
+	}))
+)
+
+const pageLength = computed({
+	get: () => participants.pageLength,
+	set: (value) => {
+		// reload() keeps the already-loaded row count when start > 0, so the new
+		// page size would be ignored after a Load More unless paging resets too.
+		participants.update({ pageLength: value, start: 0 })
+		participants.reload()
+	},
 })
 
 const getMemberCount = () => {
@@ -144,13 +175,23 @@ const getMemberCount = () => {
 	})
 }
 
+const setOpenToWork = (value) => {
+	openToWork.value = value
+	updateParticipants()
+}
+
+const setHiring = (value) => {
+	hiring.value = value
+	updateParticipants()
+}
+
 const categories = createListResource({
 	doctype: 'LMS Certificate',
 	url: 'lms.lms.api.get_certification_categories',
 	cache: ['certification_categories'],
-	auto: true,
+	auto: user.data ? true : false,
 	transform(data) {
-		data.unshift({ label: __(''), value: '' })
+		data.unshift({ label: __(' '), value: ' ' })
 		return data
 	},
 })
@@ -158,6 +199,8 @@ const categories = createListResource({
 const updateParticipants = () => {
 	updateFilters()
 	getMemberCount()
+	setQueryParams()
+
 	participants.update({
 		filters: filters.value,
 	})
@@ -165,17 +208,60 @@ const updateParticipants = () => {
 }
 
 const updateFilters = () => {
-	if (currentCategory.value) {
-		filters.value.category = currentCategory.value
-	} else {
-		delete filters.value.category
+	filters.value = {
+		...(currentCategory.value.trim('') && {
+			category: currentCategory.value,
+		}),
+		...(nameFilter.value && {
+			member_name: ['like', `%${nameFilter.value}%`],
+		}),
+		...(openToWork.value && {
+			open_to_work: true,
+		}),
+		...(hiring.value && {
+			hiring: true,
+		}),
+	}
+}
+
+const setQueryParams = () => {
+	let queries = new URLSearchParams(location.search)
+	let filterKeys = {
+		category: currentCategory.value,
+		name: nameFilter.value,
+		'open-to-work': openToWork.value,
+		hiring: hiring.value,
 	}
 
-	if (nameFilter.value) {
-		filters.value.member_name = ['like', `%${nameFilter.value}%`]
-	} else {
-		delete filters.value.member_name
+	Object.keys(filterKeys).forEach((key) => {
+		if (filterKeys[key] && hasValue(filterKeys[key])) {
+			queries.set(key, filterKeys[key])
+		} else {
+			queries.delete(key)
+		}
+	})
+	history.replaceState(
+		{},
+		'',
+		`${location.pathname}${queries.size > 0 ? `?${queries.toString()}` : ''}`
+	)
+}
+
+const hasValue = (value) => {
+	if (typeof value === 'string') {
+		return value.trim() !== ''
 	}
+	return true
+}
+
+const setFiltersFromQuery = () => {
+	let queries = new URLSearchParams(location.search)
+	nameFilter.value = queries.get('name') || ''
+	currentCategory.value = queries.get('category') || ''
+	// Read the key setQueryParams writes; `open-to-opportunities` was never
+	// written, so the filter could not survive a reload.
+	openToWork.value = queries.get('open-to-work') === 'true'
+	hiring.value = queries.get('hiring') === 'true'
 }
 
 const breadcrumbs = computed(() => [
@@ -192,13 +278,3 @@ usePageMeta(() => {
 	}
 })
 </script>
-<style>
-.headline {
-	display: -webkit-box;
-	-webkit-line-clamp: 1;
-	-webkit-box-orient: vertical;
-	text-overflow: ellipsis;
-	width: 100%;
-	overflow: hidden;
-}
-</style>

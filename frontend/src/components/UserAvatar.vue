@@ -1,24 +1,52 @@
 <template>
-	<Tooltip :text="user.full_name">
-		<Avatar
-			class="avatar border border-outline-gray-2 cursor-auto"
-			v-if="user"
-			:label="user.full_name"
-			:image="user.user_image"
-			:size="size"
-			v-bind="$attrs"
-		/>
-	</Tooltip>
+	<Avatar
+		class="avatar border border-outline-gray-2 cursor-auto"
+		v-if="user"
+		:label="user.full_name"
+		:image="user.user_image"
+		:size="size"
+		v-bind="$attrs"
+	>
+		<template v-if="user.open_to === 'Work'" #indicator>
+			<Tooltip :text="__('Open to Work')" placement="right">
+				<div class="rounded-full bg-surface-green-3 w-fit">
+					<span
+						class="lucide-badge-check"
+						:class="'text-ink-base ' + checkSize"
+					/>
+				</div>
+			</Tooltip>
+		</template>
+		<template v-else-if="user.open_to === 'Hiring'" #indicator>
+			<Tooltip :text="__('Hiring')" placement="right">
+				<div class="rounded-full bg-purple-500 w-fit">
+					<span
+						class="lucide-badge-check"
+						:class="'text-ink-base ' + checkSize"
+					/>
+				</div>
+			</Tooltip>
+		</template>
+	</Avatar>
 </template>
-<script setup>
+<script setup lang="ts">
 import { Avatar, Tooltip } from 'frappe-ui'
-const props = defineProps({
-	user: {
-		type: Object,
-		default: null,
-	},
-	size: {
-		type: String,
-	},
+import { computed } from 'vue'
+import type { UserInfo } from '@/types'
+
+const props = defineProps<{
+	user?: UserInfo | null
+	size?: string
+}>()
+
+const checkSize = computed<string>(() => {
+	const sizeMap: Record<string, string> = {
+		sm: 'size-1',
+		md: 'size-2',
+		lg: 'size-3',
+		xl: 'size-3',
+		'2xl': 'size-3',
+	}
+	return (props.size && sizeMap[props.size]) || 'size-3'
 })
 </script>

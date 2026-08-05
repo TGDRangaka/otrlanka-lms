@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_months, get_link_to_form, getdate
+from frappe.utils import add_months, get_link_to_form, getdate, validate_url
 from frappe.utils.user import get_system_managers
 
 from lms.lms.utils import generate_slug, validate_image
@@ -16,7 +16,7 @@ class JobOpportunity(Document):
 		self.company_logo = validate_image(self.company_logo)
 
 	def validate_urls(self):
-		frappe.utils.validate_url(self.company_website, True)
+		validate_url(self.company_website, True, ["http", "https"])
 
 	def autoname(self):
 		if not self.name:
@@ -35,7 +35,7 @@ def update_job_openings():
 
 
 @frappe.whitelist()
-def report(job, reason):
+def report(job: str, reason: str):
 	system_managers = get_system_managers(only_name=True)
 	user = frappe.db.get_value("User", frappe.session.user, "full_name")
 	subject = _("User {0} has reported the job post {1}").format(user, job)

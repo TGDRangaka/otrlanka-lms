@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_import": 1,
  "allow_rename": 1,
  "creation": "2023-08-24 17:46:52.065763",
  "default_view": "List",
@@ -15,15 +16,20 @@
   "payment_for_document",
   "payment_received",
   "payment_for_certificate",
+  "member_consent",
   "payment_details_section",
-  "currency",
+  "original_amount",
+  "discount_amount",
   "amount",
   "amount_with_gst",
   "column_break_yxpl",
-  "order_id",
-  "payment_id",
+  "currency",
+  "coupon",
+  "coupon_code",
   "billing_details_section",
   "address",
+  "payment_id",
+  "order_id",
   "column_break_monu",
   "gstin",
   "pan"
@@ -46,6 +52,19 @@
    "label": "Amount",
    "options": "currency",
    "reqd": 1
+  },
+  {
+   "fieldname": "coupon",
+   "fieldtype": "Link",
+   "label": "Coupon",
+   "options": "LMS Coupon"
+  },
+  {
+   "depends_on": "coupon",
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "Discount Amount",
+   "options": "currency"
   },
   {
    "fieldname": "currency",
@@ -118,12 +137,6 @@
    "reqd": 1
   },
   {
-   "depends_on": "eval:doc.currency == \"INR\";",
-   "fieldname": "amount_with_gst",
-   "fieldtype": "Currency",
-   "label": "Amount with GST"
-  },
-  {
    "fieldname": "payment_for_document_type",
    "fieldtype": "Select",
    "label": "Payment for Document Type",
@@ -141,13 +154,42 @@
    "fieldname": "source",
    "fieldtype": "Link",
    "label": "Source",
-   "options": "LMS Source"
+   "options": "LMS Source",
+   "reqd": 1
   },
   {
    "default": "0",
    "fieldname": "payment_for_certificate",
    "fieldtype": "Check",
+   "in_standard_filter": 1,
    "label": "Payment for Certificate"
+  },
+  {
+   "depends_on": "coupon",
+   "fetch_from": "coupon.code",
+   "fieldname": "coupon_code",
+   "fieldtype": "Data",
+   "label": "Coupon Code",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.currency == \"INR\"",
+   "fieldname": "amount_with_gst",
+   "fieldtype": "Currency",
+   "label": "Amount with GST"
+  },
+  {
+   "depends_on": "coupon",
+   "fieldname": "original_amount",
+   "fieldtype": "Currency",
+   "label": "Original Amount",
+   "options": "currency"
+  },
+  {
+   "default": "0",
+   "fieldname": "member_consent",
+   "fieldtype": "Check",
+   "label": "Member Consent"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -161,8 +203,8 @@
    "link_fieldname": "payment"
   }
  ],
- "modified": "2025-08-19 10:33:15.457678",
- "modified_by": "sayali@frappe.io",
+ "modified": "2026-07-28 12:30:00.000000",
+ "modified_by": "Administrator",
  "module": "LMS",
  "name": "LMS Payment",
  "owner": "Administrator",
@@ -176,6 +218,19 @@
    "read": 1,
    "report": 1,
    "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "import": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Moderator",
    "share": 1,
    "write": 1
   }

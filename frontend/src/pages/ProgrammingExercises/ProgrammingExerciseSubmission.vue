@@ -1,10 +1,5 @@
 <template>
-	<header
-		v-if="!fromLesson"
-		class="sticky flex items-center justify-between top-0 z-10 border-b bg-surface-white px-3 py-2.5 sm:px-5"
-	>
-		<Breadcrumbs :items="breadcrumbs" />
-	</header>
+	<PageHeader v-if="!fromLesson" :breadcrumbs="breadcrumbs" />
 	<div
 		v-if="falconError"
 		class="flex items-center justify-between p-3 text-sm bg-surface-amber-1 text-ink-amber-3"
@@ -14,27 +9,27 @@
 		</span>
 		<Button v-if="user.data?.is_moderator" @click="openSettings('General')">
 			<template #prefix>
-				<Settings class="size-4 stroke-1.5" />
+				<span class="lucide-settings size-4" />
 			</template>
 			{{ __('Settings') }}
 		</Button>
 	</div>
 	<div class="grid grid-cols-2 h-[calc(100vh_-_3rem)]">
-		<div class="border-r py-5 px-8 h-full">
-			<div class="font-semibold mb-2">
+		<div class="border-e py-5 px-8 h-full">
+			<h2 class="font-semibold mb-2 text-ink-gray-9">
 				{{ __('Problem Statement') }}
-			</div>
+			</h2>
 			<div
-				v-html="exercise.doc?.problem_statement"
+				v-html="sanitizeRichHTML(exercise.doc?.problem_statement)"
 				class="ProseMirror prose prose-table:table-fixed prose-td:p-2 prose-th:p-2 prose-td:border prose-th:border prose-td:border-outline-gray-2 prose-th:border-outline-gray-2 prose-td:relative prose-th:relative prose-th:bg-surface-gray-2 prose-sm max-w-none !whitespace-normal"
 			></div>
 		</div>
 		<div>
 			<div class="flex items-center justify-between p-2 bg-surface-gray-2">
-				<div class="font-semibold">
+				<div class="font-semibold text-ink-gray-9">
 					{{ exercise.doc?.language }}
 				</div>
-				<div class="space-x-2">
+				<div class="flex items-center gap-x-2">
 					<Badge
 						v-if="submission.doc?.status"
 						:theme="submission.doc.status == 'Passed' ? 'green' : 'red'"
@@ -49,11 +44,14 @@
 						"
 						variant="solid"
 						@click="submitCode"
+						:loading="running"
+						:disabled="running"
+						class="text-ink-gray-9"
 					>
 						<template #prefix>
-							<Play class="size-3" />
+							<span class="lucide-play size-3" />
 						</template>
-						{{ __('Run') }}
+						{{ running ? __('Running') : __('Run') }}
 					</Button>
 				</div>
 			</div>
@@ -71,6 +69,7 @@
 					<textarea
 						v-if="error"
 						v-model="errorMessage"
+						:aria-label="__('Compiler Message')"
 						class="font-mono text-ink-red-3 bg-surface-gray-1 border-none text-sm h-32 leading-6"
 						readonly
 					/>
@@ -79,9 +78,9 @@
 			</div>
 
 			<div ref="testCaseSection" class="p-5">
-				<span class="text-lg font-semibold text-ink-gray-9">
+				<h2 class="text-md font-semibold text-ink-gray-9">
 					{{ __('Test Cases') }}
-				</span>
+				</h2>
 				<div v-if="testCases.length" class="divide-y mt-5">
 					<div
 						v-for="(testCase, index) in testCases"
@@ -89,9 +88,11 @@
 						class="py-3"
 					>
 						<div class="flex items-center mb-3">
-							<span class=""> {{ __('Test {0}').format(index + 1) }} - </span>
+							<span class="text-ink-gray-9">
+								{{ __('Test {0}').format(index + 1) }} -
+							</span>
 							<span
-								class="font-semibold ml-2 mr-1"
+								class="font-semibold ms-2 me-1"
 								:class="
 									testCase.status === 'Passed'
 										? 'text-ink-green-3'
@@ -112,13 +113,13 @@
 								<div class="text-xs text-ink-gray-7">
 									{{ __('Input') }}
 								</div>
-								<div>{{ testCase.input }}</div>
+								<div class="text-ink-gray-9">{{ testCase.input }}</div>
 							</div>
 							<div class="space-y-2">
 								<div class="text-xs text-ink-gray-7">
 									{{ __('Your Output') }}
 								</div>
-								<div>
+								<div class="text-ink-gray-9">
 									{{ testCase.output }}
 								</div>
 							</div>
@@ -126,7 +127,9 @@
 								<div class="text-xs text-ink-gray-7">
 									{{ __('Expected Output') }}
 								</div>
-								<div>{{ testCase.expected_output }}</div>
+								<div class="text-ink-gray-9">
+									{{ testCase.expected_output }}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -139,9 +142,9 @@
 	</div>
 </template>
 <script setup lang="ts">
+import { sanitizeRichHTML } from '@/utils/sanitizeRichHTML'
 import {
 	Badge,
-	Breadcrumbs,
 	Button,
 	call,
 	createDocumentResource,
@@ -149,12 +152,29 @@ import {
 	usePageMeta,
 } from 'frappe-ui'
 import { computed, inject, onMounted, ref, watch } from 'vue'
-import { Play, X, Check, Settings } from 'lucide-vue-next'
+import PageHeader from '@/components/Layouts/PageHeader.vue'
 import { sessionStore } from '@/stores/session'
 import { useRouter } from 'vue-router'
 import { openSettings } from '@/utils'
+import { useSettings } from '@/stores/settings'
+import { getLmsRoute } from '@/utils/basePath'
+import { provideStudentView } from '@/composables/useStudentView'
 
-const user = inject<any>('$user')
+const realUser = inject<any>('$user')
+
+// Rendered in an iframe from the lesson preview, so provide/inject can't reach
+// this app instance; Student View arrives as a query param instead, exactly as
+// it does for assignment submissions. Unlike AssignmentSubmission, this page
+// reads the instructor flags in its *own* template (the settings button, the
+// view-someone-else's-submission branch), so it uses the masked user itself
+// rather than only providing it to children.
+const studentView = ref(
+	new URLSearchParams(window.location.search).get('studentView') === '1'
+)
+const { mockedUser: user } = provideStudentView(
+	realUser,
+	() => studentView.value
+)
 const code = ref<string | null>('')
 const output = ref<string | null>(null)
 const error = ref<boolean | null>(null)
@@ -162,11 +182,13 @@ const errorMessage = ref<string | null>(null)
 const testCaseSection = ref<HTMLElement | null>(null)
 const testCases = ref<TestCase[]>([])
 const boilerplate = ref<string>('')
-const { brand, livecodeURL } = sessionStore()
+const { brand } = sessionStore()
+const { settings } = useSettings()
 const router = useRouter()
 const fromLesson = ref(false)
-const falconURL = ref<string>('https://falcon.frappe.io/')
+const falconURL = ref<string>('https://falcon.frappe.io')
 const falconError = ref<string | null>(null)
+const running = ref<boolean>(false)
 
 const props = withDefaults(
 	defineProps<{
@@ -249,7 +271,10 @@ const updateBoilerPlate = () => {
 
 const checkIfUserIsPermitted = (doc: any = null) => {
 	if (!user.data) {
-		window.location.href = `/login?redirect-to=/lms/programming-exercises/${props.exerciseID}/submission/${props.submissionID}`
+		const redirectPath = getLmsRoute(
+			`programming-exercises/${props.exerciseID}/submission/${props.submissionID}`
+		)
+		window.location.href = `/login?redirect-to=${redirectPath}`
 	}
 
 	if (!doc) return
@@ -260,8 +285,7 @@ const checkIfUserIsPermitted = (doc: any = null) => {
 		!user.data.is_evaluator
 	) {
 		router.push({
-			name: 'ProgrammingExerciseSubmission',
-			params: { exerciseID: props.exerciseID, submissionID: 'new' },
+			name: 'Courses',
 		})
 		return
 	}
@@ -286,12 +310,12 @@ watch(
 )
 
 const loadFalcon = () => {
-	if (livecodeURL.data) {
-		falconURL.value = livecodeURL.data
+	if (settings.data) {
+		falconURL.value = settings.data.livecode_url
 	}
 	return new Promise((resolve, reject) => {
 		const script = document.createElement('script')
-		script.src = `${falconURL.value}static/livecode.js`
+		script.src = `${falconURL.value}/static/livecode.js`
 		script.onload = resolve
 		script.onerror = reject
 		document.head.appendChild(script)
@@ -299,8 +323,10 @@ const loadFalcon = () => {
 }
 
 const submitCode = async () => {
+	running.value = true
 	await runCode()
 	createSubmission()
+	running.value = false
 }
 
 const runCode = async () => {
@@ -397,6 +423,7 @@ const execute = (stdin = ''): Promise<string> => {
 
 		setTimeout(() => {
 			if (!hasExited) {
+				running.value = false
 				error.value = true
 				errorMessage.value = 'Execution timed out.'
 				reject('Execution timed out.')

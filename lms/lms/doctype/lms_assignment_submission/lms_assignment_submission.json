@@ -20,11 +20,12 @@
   "section_break_ydgh",
   "column_break_oqqy",
   "status",
+  "question",
+  "column_break_tbnv",
   "comments",
   "section_break_rqal",
-  "question",
-  "column_break_esgd",
   "course",
+  "column_break_esgd",
   "lesson"
  ],
  "fields": [
@@ -42,7 +43,8 @@
    "fieldname": "assignment",
    "fieldtype": "Link",
    "label": "Assignment",
-   "options": "LMS Assignment"
+   "options": "LMS Assignment",
+   "reqd": 1
   },
   {
    "fieldname": "member",
@@ -144,13 +146,17 @@
   {
    "fieldname": "section_break_ydgh",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_tbnv",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
  "make_attachments_public": 1,
- "modified": "2025-07-14 10:24:23.526176",
+ "modified": "2026-04-06 18:24:11.837953",
  "modified_by": "sayali@frappe.io",
  "module": "LMS",
  "name": "LMS Assignment Submission",
@@ -195,7 +201,6 @@
   },
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -207,7 +212,6 @@
   },
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,

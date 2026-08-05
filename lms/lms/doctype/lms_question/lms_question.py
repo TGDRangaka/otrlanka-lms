@@ -5,7 +5,15 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from lms.lms.utils import has_course_instructor_role, has_course_moderator_role
+from lms.lms.utils import has_course_instructor_role, has_moderator_role
+
+# Each LMS Question carries up to 10 option/correctness/explanation/possibility
+# columns. Keep these lists as the single source of truth so any future change
+# to cardinality touches one place.
+QUESTION_OPTION_FIELDS = [f"option_{i}" for i in range(1, 11)]
+QUESTION_CORRECTNESS_FIELDS = [f"is_correct_{i}" for i in range(1, 11)]
+QUESTION_EXPLANATION_FIELDS = [f"explanation_{i}" for i in range(1, 11)]
+QUESTION_POSSIBILITY_FIELDS = [f"possibility_{i}" for i in range(1, 11)]
 
 
 class LMSQuestion(Document):
@@ -24,12 +32,7 @@ def validate_correct_answers(question):
 
 
 def validate_duplicate_options(question):
-	options = []
-
-	for num in range(1, 5):
-		if question.get(f"option_{num}"):
-			options.append(question.get(f"option_{num}"))
-
+	options = [question.get(f) for f in QUESTION_OPTION_FIELDS if question.get(f)]
 	if len(set(options)) != len(options):
 		frappe.throw(_("Duplicate options found for this question."))
 
@@ -39,6 +42,8 @@ def validate_correct_options(question):
 
 	if len(correct_options) > 1:
 		question.multiple = 1
+	else:
+		question.multiple = 0
 
 	if not len(correct_options):
 		frappe.throw(_("At least one option must be correct for this question."))
@@ -50,19 +55,7 @@ def validate_minimum_options(question):
 
 
 def validate_possible_answer(question):
-	possible_answers = []
-	possible_answers_fields = [
-		"possibility_1",
-		"possibility_2",
-		"possibility_3",
-		"possibility_4",
-	]
-
-	for field in possible_answers_fields:
-		if question.get(field):
-			possible_answers.append(field)
-
-	if not len(possible_answers):
+	if not any(question.get(f) for f in QUESTION_POSSIBILITY_FIELDS):
 		frappe.throw(
 			_("Add at least one possible answer for this question: {0}").format(
 				frappe.bold(question.question)
@@ -79,30 +72,4 @@ def update_question_title(question):
 
 
 def get_correct_options(question):
-	correct_options = []
-	correct_option_fields = [
-		"is_correct_1",
-		"is_correct_2",
-		"is_correct_3",
-		"is_correct_4",
-	]
-	for field in correct_option_fields:
-		if question.get(field) == 1:
-			correct_options.append(field)
-
-	return correct_options
-
-
-@frappe.whitelist()
-def get_question_details(question):
-	if not has_course_instructor_role() or not has_course_moderator_role():
-		return
-
-	fields = ["question", "type", "name"]
-	for i in range(1, 5):
-		fields.append(f"option_{i}")
-		fields.append(f"is_correct_{i}")
-		fields.append(f"explanation_{i}")
-		fields.append(f"possibility_{i}")
-
-	return frappe.db.get_value("LMS Question", question, fields, as_dict=1)
+	return [f for f in QUESTION_CORRECTNESS_FIELDS if question.get(f) == 1]

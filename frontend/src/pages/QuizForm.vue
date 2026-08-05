@@ -1,191 +1,219 @@
 <template>
-	<header
-		class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
+	<PageHeader :breadcrumbs="breadcrumbs" :loading="quizDetails.loading">
+		<template #actions>
+			<template v-if="!readOnlyMode">
+				<Badge v-if="quizDetails.isDirty" theme="orange">
+					{{ __('Not Saved') }}
+				</Badge>
+				<router-link
+					v-if="quizDetails.doc?.name"
+					:to="{
+						name: 'QuizPage',
+						params: {
+							quizID: quizDetails.doc.name,
+						},
+					}"
+				>
+					<HeaderButton :label="__('Test Quiz')" icon="lucide-list-checks" />
+				</router-link>
+				<router-link
+					v-if="quizDetails.doc?.name"
+					:to="{
+						name: 'QuizSubmissionList',
+						params: {
+							quizID: quizDetails.doc.name,
+						},
+					}"
+				>
+					<HeaderButton
+						:label="__('Check Submissions')"
+						icon="lucide-clipboard-list"
+					/>
+				</router-link>
+				<Tooltip v-if="quizDetails.doc?.name" :text="__('Delete quiz')">
+					<Button
+						icon="lucide-trash-2"
+						:label="__('Delete quiz')"
+						theme="red"
+						variant="outline"
+						@click="deleteQuiz"
+					/>
+				</Tooltip>
+			</template>
+		</template>
+	</PageHeader>
+	<div
+		v-if="quizDetails.loading && !quizDetails.doc"
+		class="flex items-center justify-center py-20"
 	>
-		<Breadcrumbs :items="breadcrumbs" />
-		<div v-if="!readOnlyMode" class="space-x-2">
-			<Badge v-if="quizDetails.isDirty" theme="orange">
-				{{ __('Not Saved') }}
-			</Badge>
-			<router-link
-				v-if="quizDetails.doc?.name"
-				:to="{
-					name: 'QuizPage',
-					params: {
-						quizID: quizDetails.doc.name,
-					},
-				}"
-			>
-				<Button>
-					<template #prefix>
-						<ListChecks class="size-4 stroke-1.5" />
-					</template>
-					{{ __('Test Quiz') }}
-				</Button>
-			</router-link>
-			<router-link
-				v-if="quizDetails.doc?.name"
-				:to="{
-					name: 'QuizSubmissionList',
-					params: {
-						quizID: quizDetails.doc.name,
-					},
-				}"
-			>
-				<Button>
-					<template #prefix>
-						<ClipboardList class="size-4 stroke-1.5" />
-					</template>
-					{{ __('Check Submissions') }}
-				</Button>
-			</router-link>
-			<Button variant="solid" @click="submitQuiz()">
-				{{ __('Save') }}
-			</Button>
-		</div>
-	</header>
-	<div v-if="quizDetails.doc" class="py-5">
-		<div class="px-20 pb-5 space-y-5 border-b mb-5">
-			<div class="text-lg text-ink-gray-9 font-semibold mb-4">
-				{{ __('Details') }}
-			</div>
-			<div class="grid grid-cols-2 gap-5">
-				<div class="space-y-5">
-					<FormControl
-						v-model="quizDetails.doc.title"
-						:label="__('Title')"
-						:required="true"
-					/>
-					<FormControl
-						type="number"
-						v-model="quizDetails.doc.max_attempts"
-						:label="__('Maximum Attempts')"
-					/>
-					<FormControl
-						type="number"
-						v-model="quizDetails.doc.duration"
-						:label="__('Duration (in minutes)')"
-					/>
-				</div>
-				<div class="space-y-5">
-					<FormControl
-						v-model="quizDetails.doc.total_marks"
-						:label="__('Total Marks')"
-						disabled
-					/>
-					<FormControl
-						v-model="quizDetails.doc.passing_percentage"
-						:label="__('Passing Percentage')"
-						:required="true"
-					/>
-				</div>
-			</div>
-		</div>
-		<div class="px-20 pb-5 space-y-5 border-b mb-5">
-			<div class="text-lg text-ink-gray-9 font-semibold mb-4">
-				{{ __('Settings') }}
-			</div>
-			<div class="grid grid-cols-3 gap-5">
-				<div class="flex flex-col space-y-10">
-					<FormControl
-						v-model="quizDetails.doc.show_answers"
-						type="checkbox"
-						:label="__('Show Answers')"
-					/>
-					<FormControl
-						v-model="quizDetails.doc.show_submission_history"
-						type="checkbox"
-						:label="__('Show Submission History')"
-					/>
-				</div>
-				<div class="flex flex-col space-y-5">
-					<FormControl
-						v-model="quizDetails.doc.shuffle_questions"
-						type="checkbox"
-						:label="__('Shuffle Questions')"
-					/>
-					<FormControl
-						v-if="quizDetails.doc.shuffle_questions"
-						v-model="quizDetails.doc.limit_questions_to"
-						:label="__('Limit Questions To')"
-					/>
-				</div>
-				<div class="flex flex-col space-y-5">
-					<FormControl
-						v-model="quizDetails.doc.enable_negative_marking"
-						type="checkbox"
-						:label="__('Enable Negative Marking')"
-					/>
-					<FormControl
-						v-if="quizDetails.doc.enable_negative_marking"
-						v-model="quizDetails.doc.marks_to_cut"
-						:label="__('Marks to Cut')"
-					/>
-				</div>
-			</div>
-		</div>
-
-		<div class="px-20 pb-5 space-y-5 mb-5">
-			<div class="flex items-center justify-between mb-4">
-				<div class="text-lg font-semibold text-ink-gray-9">
+		<LoadingIndicator class="size-5 text-ink-gray-5" />
+	</div>
+	<div
+		v-else-if="quizDetails.doc"
+		class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[7fr,3fr]"
+	>
+		<!-- LEFT: Questions -->
+		<div class="flex min-w-0 flex-col lg:min-h-0">
+			<div class="flex items-center justify-between px-5 pt-5 mb-4">
+				<h2 class="text-lg-semibold text-ink-gray-9">
 					{{ __('Questions') }}
-				</div>
+				</h2>
 				<Button v-if="!readOnlyMode" @click="openQuestionModal()">
 					<template #prefix>
-						<Plus class="w-4 h-4" />
+						<span class="lucide-plus size-4" />
 					</template>
 					{{ __('New Question') }}
 				</Button>
 			</div>
-			<ListView
+			<ResponsiveListView
 				v-if="questions.length"
+				class="px-5 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-0"
 				:columns="questionColumns"
 				:rows="questions"
 				row-key="name"
+				title-key="question_detail"
+				:options="listOptions"
+			>
+				<template #cell="{ column, value }">
+					<div
+						v-if="column.key === 'question_detail'"
+						class="text-xs [&>*]:inline"
+						v-html="sanitizeRichHTML(value)"
+					></div>
+					<div v-else class="text-xs">
+						{{ value }}
+					</div>
+				</template>
+				<template #selection-actions="{ unselectAll, selections }">
+					<Button
+						variant="ghost"
+						:label="__('Delete')"
+						@click="deleteQuestions(selections, unselectAll)"
+					>
+						<span class="lucide-trash-2 size-4" />
+					</Button>
+				</template>
+			</ResponsiveListView>
+			<EmptyStateLayout
+				v-else
+				class="flex-1"
+				name="Questions"
+				:title="__('No questions added yet')"
+				:description="__('Add a question to get started')"
+				icon="lucide-circle-help"
+			/>
+			<ListFooter
+				v-model="pageLength"
+				class="border-t px-3 py-2 sm:px-5"
 				:options="{
-					showTooltip: false,
+					rowCount: questions.length,
+					totalCount: questions.length,
 				}"
 			>
-				<ListHeader
-					class="mb-2 grid items-center space-x-4 rounded bg-surface-gray-2 p-2"
+				<template #right>
+					<div class="flex items-center gap-1 text-base text-ink-gray-5">
+						<div>{{ questions.length }}</div>
+						<div>{{ __('of') }}</div>
+						<div>{{ questions.length }}</div>
+					</div>
+				</template>
+			</ListFooter>
+		</div>
+
+		<!-- RIGHT: Details + Settings -->
+		<div
+			class="order-first min-w-0 space-y-8 border-b p-5 lg:order-none lg:overflow-y-auto lg:border-b-0 lg:border-s"
+		>
+			<div class="space-y-5">
+				<h2 class="text-ink-gray-9 font-semibold">{{ __('Details') }}</h2>
+				<FormControl
+					v-model="quizDetails.doc.title"
+					:label="__('Title')"
+					variant="outline"
+					:required="true"
+					autofocus
+				/>
+				<FormControl
+					type="number"
+					v-model="quizDetails.doc.max_attempts"
+					:label="__('Maximum Attempts')"
+					variant="outline"
+				/>
+				<FormControl
+					type="number"
+					v-model="quizDetails.doc.duration"
+					:label="__('Duration (in minutes)')"
+					variant="outline"
+				/>
+				<FormControl
+					v-model="quizDetails.doc.total_marks"
+					variant="outline"
+					disabled
 				>
-					<ListHeaderItem :item="item" v-for="item in questionColumns" />
-				</ListHeader>
-				<ListRows>
-					<ListRow
-						:row="row"
-						v-slot="{ idx, column, item }"
-						v-for="row in questions"
-						@click="openQuestionModal(row)"
-						class="cursor-pointer"
-					>
-						<ListRowItem :item="item">
-							<div
-								v-if="column.key == 'question_detail'"
-								class="text-xs truncate h-4"
-								v-html="item"
-							></div>
-							<div v-else class="text-xs">
-								{{ item }}
-							</div>
-						</ListRowItem>
-					</ListRow>
-				</ListRows>
-				<ListSelectBanner>
-					<template #actions="{ unselectAll, selections }">
-						<div class="flex gap-2">
-							<Button
-								variant="ghost"
-								@click="deleteQuestions(selections, unselectAll)"
+					<template #label>
+						<div class="flex items-center gap-1.5">
+							<span>{{ __('Total Marks') }}</span>
+							<Tooltip
+								:text="
+									__(`Auto-filled based on the sum of all questions' marks.`)
+								"
 							>
-								<Trash2 class="h-4 w-4 stroke-1.5" />
-							</Button>
+								<span
+									class="lucide-help-circle size-4 shrink-0 text-ink-gray-5"
+								/>
+							</Tooltip>
 						</div>
 					</template>
-				</ListSelectBanner>
-			</ListView>
-			<div v-else class="text-ink-gray-6 text-sm">
-				{{ __('No questions added yet') }}
+				</FormControl>
+				<FormControl
+					v-model="quizDetails.doc.passing_percentage"
+					:label="__('Passing Percentage')"
+					variant="outline"
+					:required="true"
+				/>
+			</div>
+			<div class="space-y-5">
+				<h2 class="text-ink-gray-9 font-semibold">{{ __('Settings') }}</h2>
+				<BooleanSwitch
+					v-model="quizDetails.doc.show_answers"
+					size="sm"
+					:label="__('Show Answers')"
+					:description="
+						__('Display correct answers after each question is attempted.')
+					"
+				/>
+				<BooleanSwitch
+					v-model="quizDetails.doc.show_submission_history"
+					size="sm"
+					:label="__('Show Submission History')"
+					:description="__('Allow users to view their past quiz attempts.')"
+				/>
+				<BooleanSwitch
+					v-model="quizDetails.doc.shuffle_questions"
+					size="sm"
+					:label="__('Shuffle Questions')"
+					:description="
+						__('Randomize the order of questions for each attempt.')
+					"
+				/>
+				<FormControl
+					v-if="quizDetails.doc.shuffle_questions"
+					v-model="quizDetails.doc.limit_questions_to"
+					:label="__('Limit Questions To')"
+					variant="outline"
+				/>
+				<BooleanSwitch
+					v-model="quizDetails.doc.enable_negative_marking"
+					size="sm"
+					:label="__('Enable Negative Marking')"
+					:description="__('Deduct marks for incorrect answers.')"
+				/>
+				<FormControl
+					v-if="quizDetails.doc.enable_negative_marking"
+					v-model="quizDetails.doc.marks_to_cut"
+					:label="__('Marks to Deduct')"
+					variant="outline"
+				/>
 			</div>
 		</div>
 	</div>
@@ -194,31 +222,25 @@
 		v-model="showQuestionModal"
 		:questionDetail="currentQuestion"
 		v-model:quiz="quizDetails"
-		:title="
-			currentQuestion.question
-				? __('Edit the question')
-				: __('Add a new question')
-		"
+		:title="currentQuestion.question ? __('Edit Question') : __('Add Question')"
 	/>
 </template>
 <script setup>
 import {
-	Breadcrumbs,
 	createResource,
 	FormControl,
-	ListView,
-	ListHeader,
-	ListHeaderItem,
-	ListRows,
-	ListRow,
-	ListRowItem,
-	ListSelectBanner,
+	ListFooter,
 	Button,
 	usePageMeta,
 	toast,
 	createDocumentResource,
 	Badge,
+	LoadingIndicator,
+	Tooltip,
 } from 'frappe-ui'
+import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
+import PageHeader from '@/components/Layouts/PageHeader.vue'
+import HeaderButton from '@/components/HeaderButton.vue'
 import {
 	computed,
 	reactive,
@@ -227,13 +249,24 @@ import {
 	inject,
 	onBeforeUnmount,
 	watch,
+	getCurrentInstance,
 } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
+import {
+	useKeyboardShortcuts,
+	saveShortcut,
+} from '@/composables/useKeyboardShortcuts'
 import { sessionStore } from '../stores/session'
-import { ClipboardList, ListChecks, Plus, Trash2 } from 'lucide-vue-next'
+
 import { useRouter } from 'vue-router'
+import { sanitizeHTML } from '@/utils'
+import { sanitizeRichHTML } from '@/utils/sanitizeRichHTML'
 import Question from '@/components/Modals/Question.vue'
+import EmptyStateLayout from '@/components/Layouts/EmptyStateLayout.vue'
+import ResponsiveListView from '@/components/ResponsiveListView.vue'
 
 const { brand } = sessionStore()
+const pageLength = ref(20)
 const showQuestionModal = ref(false)
 const currentQuestion = reactive({
 	question: '',
@@ -243,6 +276,35 @@ const currentQuestion = reactive({
 const user = inject('$user')
 const router = useRouter()
 const readOnlyMode = window.read_only_mode
+const { $dialog } = getCurrentInstance().appContext.config.globalProperties
+
+const deleteQuiz = () => {
+	$dialog({
+		title: __('Delete this quiz?'),
+		message: __(
+			'Deleting this quiz permanently removes it and its submissions. This action cannot be undone. Are you sure you want to continue?'
+		),
+		actions: [
+			{
+				label: __('Delete'),
+				theme: 'red',
+				variant: 'solid',
+				onClick({ close }) {
+					quizDetails.delete
+						.submit()
+						.then(() => {
+							toast.success(__('Quiz deleted successfully'))
+							router.push({ name: 'Quizzes' })
+						})
+						.catch((err) => {
+							toast.error(err.messages?.[0] || __('Could not delete the quiz'))
+						})
+					close()
+				},
+			},
+		],
+	})
+}
 
 const props = defineProps({
 	quizID: {
@@ -251,54 +313,58 @@ const props = defineProps({
 	},
 })
 
-const questions = ref([])
+const questions = computed(() => {
+	return quizDetails.doc?.questions || []
+})
 
 onMounted(() => {
-	if (
-		props.quizID == 'new' &&
-		!user.data?.is_moderator &&
-		!user.data?.is_instructor
-	) {
+	if (!user.data?.is_moderator && !user.data?.is_instructor) {
 		router.push({ name: 'Courses' })
 	}
-	if (props.quizID !== 'new') {
-		quizDetails.reload()
-	}
-	window.addEventListener('keydown', keyboardShortcut)
+	quizDetails.reload()
 })
 
-const keyboardShortcut = (e) => {
-	if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
-		submitQuiz()
-		e.preventDefault()
-	}
-}
+// ignoreTyping: false so Cmd/Ctrl+S saves even while the cursor is in a field.
+useKeyboardShortcuts({
+	ignoreTyping: false,
+	shortcuts: [saveShortcut(() => submitQuiz())],
+})
 
 onBeforeUnmount(() => {
-	window.removeEventListener('keydown', keyboardShortcut)
+	// Flush a pending edit that the debounce hasn't fired yet, so navigating
+	// away immediately after a change can't drop it.
+	if (quizDetails.isDirty) submitQuiz({ silent: true })
 })
-
-watch(
-	() => props.quizID !== 'new',
-	(newVal) => {
-		if (newVal) {
-			quizDetails.reload()
-		}
-	}
-)
 
 const quizDetails = createDocumentResource({
 	doctype: 'LMS Quiz',
 	name: props.quizID,
 	auto: false,
-	onSuccess(doc) {
-		if (doc.questions && doc.questions.length > 0) {
-			questions.value = doc.questions.map((question) => question)
-		}
-	},
 })
 
-const submitQuiz = () => {
+const validateTitle = () => {
+	quizDetails.doc.title = sanitizeHTML(quizDetails.doc.title.trim())
+}
+
+// Debounced silent autosave: a burst of edits collapses into a single save
+// shortly after the user pauses. `quizDetails.isDirty` is tracked by the
+// document resource, so loading the quiz doesn't arm it; only real edits do.
+const autoSave = useDebounceFn(() => {
+	if (quizDetails.isDirty) submitQuiz({ silent: true })
+}, 1000)
+
+watch(
+	() => quizDetails.isDirty,
+	(dirty) => {
+		if (dirty) autoSave()
+	}
+)
+
+const submitQuiz = (opts = {}) => {
+	// Nothing to save once the quiz has been deleted (doc is null). Guard so the
+	// autosave watcher and the onBeforeUnmount flush can't throw or re-insert it.
+	if (!quizDetails.doc) return
+	validateTitle()
 	quizDetails.setValue.submit(
 		{
 			...quizDetails.doc,
@@ -307,10 +373,12 @@ const submitQuiz = () => {
 		{
 			onSuccess(data) {
 				quizDetails.doc.total_marks = data.total_marks
-				toast.success(__('Quiz updated successfully'))
+				if (!opts.silent) toast.success(__('Quiz updated successfully'))
 			},
 			onError(err) {
-				toast.error(err.messages?.[0] || err)
+				// Autosave failures stay quiet; the orange "unsaved" badge remains
+				// so the change isn't silently lost.
+				if (!opts.silent) toast.error(err.messages?.[0] || err)
 			},
 		}
 	)
@@ -337,19 +405,27 @@ const questionColumns = computed(() => {
 		{
 			label: __('ID'),
 			key: 'question',
-			width: '10rem',
+			width: 2,
 		},
 		{
 			label: __('Question'),
-			key: __('question_detail'),
-			width: '40rem',
+			key: 'question_detail',
+			width: 8,
 		},
 		{
 			label: __('Marks'),
 			key: 'marks',
-			width: '5rem',
+			width: 1,
 		},
 	]
+})
+
+const listOptions = computed(() => {
+	return {
+		showTooltip: false,
+		selectable: true,
+		onRowClick: openQuestionModal,
+	}
 })
 
 const openQuestionModal = (question = null) => {
@@ -391,7 +467,7 @@ const deleteQuestions = (selections, unselectAll) => {
 }
 
 const breadcrumbs = computed(() => {
-	let crumbs = [
+	const crumbs = [
 		{
 			label: __('Quizzes'),
 			route: {
@@ -400,16 +476,18 @@ const breadcrumbs = computed(() => {
 		},
 	]
 
-	crumbs.push({
-		label: props.quizID == 'new' ? __('New Quiz') : quizDetails.doc?.title,
-		route: { name: 'QuizForm', params: { quizID: props.quizID } },
-	})
+	if (quizDetails.doc?.title) {
+		crumbs.push({
+			label: quizDetails.doc.title,
+			route: { name: 'QuizForm', params: { quizID: props.quizID } },
+		})
+	}
 	return crumbs
 })
 
 usePageMeta(() => {
 	return {
-		title: props.quizID == 'new' ? __('New Quiz') : quizDetails.doc?.title,
+		title: quizDetails.doc?.title,
 		icon: brand.favicon,
 	}
 })

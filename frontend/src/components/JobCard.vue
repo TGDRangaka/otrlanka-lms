@@ -2,36 +2,39 @@
 	<div
 		class="flex flex-col border rounded-md p-3 h-full hover:border-outline-gray-3"
 	>
-		<div class="flex space-x-4 mb-4">
-			<div class="flex flex-col space-y-2 flex-1">
-				<div class="text-lg font-semibold text-ink-gray-9">
+		<div class="flex gap-x-4 mb-4">
+			<div class="flex flex-col space-y-2 flex-1 break-all">
+				<div class="text-lg-semibold text-ink-gray-9">
 					{{ job.company_name }}
 				</div>
 				<span class="font-medium text-ink-gray-7 leading-5">
 					{{ job.job_title }}
 				</span>
-				<div class="flex items-center space-x-1 text-sm text-ink-gray-7">
-					<MapPin class="size-3" />
+				<div class="flex items-center gap-x-1 text-sm text-ink-gray-7">
+					<span class="lucide-map-pin size-3" />
 					<span>
 						{{ job.location }}{{ job.country ? `, ${job.country}` : '' }}
 					</span>
 				</div>
 				<div
 					v-if="job.applicants"
-					class="flex items-center space-x-1 text-sm text-ink-gray-7"
+					class="flex items-center gap-x-1 text-sm text-ink-gray-7"
 				>
-					<User class="size-3" />
+					<span class="lucide-user size-3" />
 					<span>
 						{{ job.applicants }}
 						{{ job.applicants > 1 ? __('applicants') : __('applicant') }}
 					</span>
 				</div>
 			</div>
-			<!-- <img :src="job.company_logo" alt="Company Logo" class="size-8  rounded-full object-contain  bg-white" /> -->
+			<!-- <img :src="job.company_logo" alt="Company Logo" class="size-8  rounded-full object-contain  bg-surface-base" /> -->
 		</div>
-		<div class="space-x-2 mt-auto">
+		<div class="flex gap-x-2 items-center mt-auto">
 			<Badge>
 				{{ job.type }}
+			</Badge>
+			<Badge v-if="job.work_mode">
+				{{ job.work_mode }}
 			</Badge>
 			<Badge>
 				{{ dayjs(job.creation).fromNow() }}
@@ -39,14 +42,14 @@
 		</div>
 		<!-- <div
 			class="description text-ink-gray-9 text-sm"
-			v-html="job.description"
+			v-html="sanitizeRichHTML(job.description)"
 		></div> -->
 	</div>
 </template>
 <script setup>
+import { sanitizeRichHTML } from '@/utils/sanitizeRichHTML'
 import { inject } from 'vue'
 import { Badge } from 'frappe-ui'
-import { MapPin, User } from 'lucide-vue-next'
 
 const dayjs = inject('$dayjs')
 const props = defineProps({

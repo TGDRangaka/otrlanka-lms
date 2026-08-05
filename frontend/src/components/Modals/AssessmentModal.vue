@@ -1,30 +1,32 @@
 <template>
 	<Dialog
-		v-model="show"
-		:options="{
-			title: __('Add an assessment'),
-			size: 'sm',
-			actions: [
-				{
-					label: __('Submit'),
-					variant: 'solid',
-					onClick: (close) => addAssessment(close),
-				},
-			],
-		}"
+		v-model:open="show"
+		:title="__('Add an assessment')"
+		size="sm"
+		:actions="[
+			{
+				label: __('Submit'),
+				variant: 'solid',
+				onClick: ({ close }) => addAssessment(close),
+			},
+		]"
 	>
-		<template #body-content>
+		<template #default>
 			<div class="space-y-4">
 				<FormControl
 					type="select"
 					:options="assessmentTypes"
 					v-model="assessmentType"
 					:label="__('Type')"
+					placeholder=" "
+					@update:modelValue="() => (assessment = null)"
 				/>
 				<Link
+					v-if="assessmentType"
 					v-model="assessment"
 					:doctype="assessmentType"
 					:label="__('Assessment')"
+					placeholder=" "
 					:onCreate="
 						(value, close) => {
 							close()
@@ -49,9 +51,9 @@
 </template>
 <script setup>
 import { Dialog, FormControl, createResource, toast } from 'frappe-ui'
-import Link from '@/components/Controls/Link.vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import Link from '@/components/Controls/Link.vue'
 
 const show = defineModel()
 const assessmentType = ref(null)

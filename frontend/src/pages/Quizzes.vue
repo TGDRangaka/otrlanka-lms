@@ -1,160 +1,97 @@
 <template>
-	<header
-		class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
+	<ListPage
+		:breadcrumbs="breadcrumbs"
+		:title="__('{0} Quizzes').format(totalQuizzes.data || 0)"
+		layout="list"
+		:columns="quizColumns"
+		:rows="quizzes.data || []"
+		:list-options="listOptions"
+		:total-count="totalQuizzes.data ?? 0"
+		:loading="quizzes.list.loading"
+		:has-next-page="quizzes.hasNextPage"
+		v-model:page-length="pageLength"
+		empty-name="Quizzes"
+		empty-icon="lucide-circle-help"
+		@load-more="quizzes.next()"
 	>
-		<Breadcrumbs :items="breadcrumbs" />
-		<Button v-if="!readOnlyMode" variant="solid" @click="showForm = true">
-			<template #prefix>
-				<Plus class="w-4 h-4" />
-			</template>
-			{{ __('Create') }}
-		</Button>
-	</header>
-	<div class="py-5 mx-5">
-		<div class="flex items-center justify-between mb-4">
-			<div class="text-lg font-semibold text-ink-gray-7">
-				{{
-					quizzes.data?.length
-						? __('{0} Quizzes').format(quizzes.data.length)
-						: __('No Quizzes')
-				}}
-			</div>
-			<FormControl v-model="search" type="text" placeholder="Search">
+		<template #actions>
+			<Button v-if="!readOnlyMode" variant="solid" @click="createQuiz">
 				<template #prefix>
-					<FeatherIcon name="search" class="size-4 text-ink-gray-5" />
+					<span class="lucide-plus size-4" />
+				</template>
+				{{ __('Create') }}
+			</Button>
+		</template>
+
+		<template #filters>
+			<FormControl
+				v-model="search"
+				type="text"
+				:placeholder="__('Search')"
+				:aria-label="__('Search')"
+			>
+				<template #prefix>
+					<span class="lucide-search size-4 text-ink-gray-5" />
 				</template>
 			</FormControl>
-		</div>
-		<ListView
-			v-if="quizzes.data?.length"
-			:columns="quizColumns"
-			:rows="quizzes.data"
-			row-key="name"
-			:options="{ showTooltip: false, selectable: true }"
-		>
-			<ListHeader
-				class="mb-2 grid items-center space-x-4 rounded bg-surface-gray-2 p-2"
-			>
-				<ListHeaderItem :item="item" v-for="item in quizColumns">
-					<template #prefix="{ item }">
-						<FeatherIcon :name="item.icon?.toString()" class="h-4 w-4" />
-					</template>
-				</ListHeaderItem>
-			</ListHeader>
-			<ListRows>
-				<router-link
-					v-for="row in quizzes.data"
-					:to="{
-						name: 'QuizForm',
-						params: {
-							quizID: row.name,
-						},
-					}"
-				>
-					<ListRow :row="row">
-						<template #default="{ column, item }">
-							<ListRowItem :item="row[column.key]" :align="column.align">
-								<div v-if="column.key == 'show_answers'">
-									<FormControl
-										type="checkbox"
-										v-model="row[column.key]"
-										:disabled="true"
-									/>
-								</div>
-								<div
-									v-else-if="column.key == 'modified'"
-									class="text-xs text-ink-gray-5"
-								>
-									{{ row[column.key] }}
-								</div>
-								<div v-else>
-									{{ row[column.key] }}
-								</div>
-							</ListRowItem>
-						</template>
-					</ListRow>
-				</router-link>
-			</ListRows>
-			<ListSelectBanner>
-				<template #actions="{ unselectAll, selections }">
-					<div class="flex gap-2">
-						<Button
-							variant="ghost"
-							@click="deleteQuiz(selections, unselectAll)"
-						>
-							<FeatherIcon name="trash-2" class="h-4 w-4 stroke-1.5" />
-						</Button>
-					</div>
-				</template>
-			</ListSelectBanner>
-		</ListView>
-		<EmptyState v-else type="Quizzes" />
-		<div v-if="quizzes.hasNextPage" class="flex justify-center my-5">
-			<Button @click="quizzes.next()">
-				{{ __('Load More') }}
-			</Button>
-		</div>
-	</div>
-	<Dialog
-		v-model="showForm"
-		:options="{
-			title: __('Create a Quiz'),
-			size: 'sm',
-			actions: [
-				{
-					label: __('Save'),
-					variant: 'solid',
-					onClick({ close }) {
-						insertQuiz(close)
-					},
-				},
-			],
-		}"
-	>
-		<template #body-content>
-			<FormControl v-model="title" :label="__('Title')" type="text" />
 		</template>
-	</Dialog>
+
+		<template #cell="{ column, row, value }">
+			<Checkbox
+				v-if="column.key == 'show_answers'"
+				:modelValue="Boolean(value)"
+				:disabled="true"
+			/>
+			<div v-else-if="column.key == 'modified'" class="text-sm text-ink-gray-5">
+				{{ value }}
+			</div>
+			<div v-else>{{ value }}</div>
+		</template>
+
+		<template #selection-actions="{ unselectAll, selections }">
+			<Button
+				variant="ghost"
+				:label="__('Delete')"
+				@click="deleteQuiz(selections, unselectAll)"
+			>
+				<span class="lucide-trash-2 size-4" />
+			</Button>
+		</template>
+	</ListPage>
 </template>
 <script setup>
 import {
-	Breadcrumbs,
 	Button,
+	Checkbox,
 	createListResource,
-	Dialog,
-	FeatherIcon,
+	createResource,
 	FormControl,
-	ListView,
-	ListRows,
-	ListRow,
-	ListRowItem,
-	ListHeader,
-	ListHeaderItem,
-	ListSelectBanner,
 	toast,
 	usePageMeta,
 } from 'frappe-ui'
+import ListPage from '@/components/Layouts/ListPage.vue'
 import { useRouter } from 'vue-router'
 import { computed, inject, onMounted, ref, watch } from 'vue'
-import { Plus } from 'lucide-vue-next'
+
 import { sessionStore } from '@/stores/session'
-import EmptyState from '@/components/EmptyState.vue'
+import { useTelemetry } from 'frappe-ui/frappe'
 
 const { brand } = sessionStore()
+const { capture } = useTelemetry()
 const user = inject('$user')
 const dayjs = inject('$dayjs')
 const router = useRouter()
 const search = ref('')
 const readOnlyMode = window.read_only_mode
 const quizFilters = ref({})
-const showForm = ref(false)
-const title = ref('')
 
 onMounted(() => {
-	if (!user.data?.is_moderator && !user.data?.is_instructor) {
+	if (
+		!user.data?.is_moderator &&
+		!user.data?.is_instructor &&
+		!user.data?.is_evaluator
+	) {
 		router.push({ name: 'Courses' })
-	} else if (!user.data?.is_moderator) {
-		quizFilters.value['owner'] = user.data?.name
 	}
 })
 
@@ -164,6 +101,10 @@ watch(search, () => {
 		filters: quizFilters.value,
 	})
 	quizzes.reload()
+	totalQuizzes.update({
+		filters: quizFilters.value,
+	})
+	totalQuizzes.reload()
 })
 
 const quizzes = createListResource({
@@ -181,26 +122,58 @@ const quizzes = createListResource({
 	auto: true,
 	cache: ['quizzes', user.data?.name],
 	orderBy: 'modified desc',
+	pageLength: 24,
 	transform(data) {
 		return data.map((quiz) => {
 			return {
 				...quiz,
-				modified: dayjs(quiz.modified).fromNow(),
+				modified: dayjs(quiz.modified).format('DD MMM YYYY'),
 			}
 		})
 	},
 })
 
-const insertQuiz = (close) => {
+const pageLength = computed({
+	get: () => quizzes.pageLength,
+	set: (value) => {
+		// reload() ignores a new pageLength while start > 0: it refetches the
+		// already loaded rows instead, so paging must be reset for it to apply.
+		quizzes.update({ pageLength: value, start: 0 })
+		quizzes.reload()
+	},
+})
+
+const listOptions = computed(() => ({
+	showTooltip: false,
+	selectable: true,
+	getRowRoute: (row) => ({
+		name: 'QuizForm',
+		params: { quizID: row.name },
+	}),
+}))
+
+const totalQuizzes = createResource({
+	url: 'frappe.client.get_count',
+	params: {
+		doctype: 'LMS Quiz',
+		filters: quizFilters.value,
+	},
+	auto: true,
+	cache: ['quizzes_count', user.data?.name],
+	onError(err) {
+		toast.error(err.messages?.[0] || err)
+		console.error(err)
+	},
+})
+
+const createQuiz = () => {
 	quizzes.insert.submit(
 		{
-			title: title.value,
+			title: __('Untitled Quiz'),
 		},
 		{
 			onSuccess(data) {
-				toast.success(__('Quiz created successfully'))
-				close()
-				title.value = ''
+				capture('quiz_created')
 				router.push({
 					name: 'QuizForm',
 					params: {
@@ -209,7 +182,7 @@ const insertQuiz = (close) => {
 				})
 			},
 			onError(error) {
-				toast.error(__('Error creating quiz: {0}', error.message))
+				toast.error(__('Error creating quiz: {0}').format(error.message))
 			},
 		}
 	)
@@ -229,42 +202,42 @@ const quizColumns = computed(() => {
 			label: __('Title'),
 			key: 'title',
 			width: 2,
-			icon: 'file-text',
+			icon: 'lucide-file-text',
 		},
 		{
 			label: __('Total Marks'),
 			key: 'total_marks',
-			width: 1,
-			align: 'center',
-			icon: 'hash',
+			width: 0.5,
+			align: 'left',
+			icon: 'lucide-hash',
 		},
 		{
 			label: __('Passing Percentage'),
 			key: 'passing_percentage',
 			width: 1,
-			align: 'center',
-			icon: 'percent',
+			align: 'left',
+			icon: 'lucide-percent',
 		},
 		{
 			label: __('Max Attempts'),
 			key: 'max_attempts',
-			width: 1,
-			align: 'center',
-			icon: 'repeat',
+			width: 0.5,
+			align: 'left',
+			icon: 'lucide-repeat',
 		},
 		{
 			label: __('Show Answers'),
 			key: 'show_answers',
-			width: 1,
-			align: 'center',
-			icon: 'eye',
+			width: 0.5,
+			align: 'left',
+			icon: 'lucide-eye',
 		},
 		{
-			label: __('Modified'),
+			label: __('Updated On'),
 			key: 'modified',
 			width: 1,
-			align: 'center',
-			icon: 'clock',
+			align: 'left',
+			icon: 'lucide-clock',
 		},
 	]
 })

@@ -1,262 +1,260 @@
 <template>
-	<div>
-		<label class="block mb-1" :class="labelClasses" v-if="label">
-			{{ label }}
-			<span class="text-ink-red-3" v-if="required">*</span>
-		</label>
-		<div class="w-full">
-			<Combobox v-model="selectedValue" nullable>
-				<Popover class="w-full" v-model:show="showOptions">
-					<template #target="{ togglePopover }">
-						<ComboboxInput
-							ref="search"
-							class="search-input form-input w-full focus-visible:!ring-0"
-							type="text"
-							:value="query"
-							@change="
-								(e) => {
-									query = e.target.value
-									showOptions = true
-								}
-							"
-							autocomplete="off"
-							@focus="() => togglePopover()"
-							@keydown.delete.capture.stop="removeLastValue"
-						/>
-					</template>
-					<template #body="{ isOpen, close }">
-						<div v-show="isOpen">
-							<div
-								class="mt-1 rounded-lg bg-surface-white py-1 text-base border-2"
+	<div class="space-y-1.5">
+		<InputLabel
+			v-if="label"
+			:id="labelId"
+			:for-id="inputId"
+			:label="label"
+			:required="required"
+		/>
+		<Combobox v-model="selectedValue" nullable v-slot="{ open }">
+			<div class="relative w-full">
+				<div
+					class="flex flex-wrap items-center gap-1.5 w-full rounded-lg border border-[--surface-gray-2] bg-surface-gray-2 px-2 py-1.5 cursor-text transition-colors hover:border-outline-elevation-2 hover:bg-surface-gray-3 focus-within:bg-surface-base focus-within:border-outline-gray-4 focus-within:shadow-sm focus-within:ring-0"
+					@click="focusInput"
+				>
+					<button
+						v-for="value in values"
+						:key="value"
+						type="button"
+						class="inline-flex items-center gap-1 bg-surface-base border border-outline-gray-2 text-ink-gray-7 ps-2 pe-1.5 py-0.5 rounded text-base leading-5"
+						@click.stop="removeValue(value)"
+					>
+						<span>{{ value }}</span>
+						<span class="lucide-x size-3.5 shrink-0" />
+					</button>
+					<ComboboxInput
+						ref="search"
+						:id="inputId"
+						class="flex-1 min-w-[4rem] border-none outline-none bg-transparent p-0 text-base focus:ring-0"
+						type="text"
+						:aria-label="label || __('Search')"
+						:placeholder="!values?.length ? __('Search...') : ''"
+						@change="
+							(e) => {
+								query = e.target.value
+							}
+						"
+						autocomplete="off"
+						@focus="onFocus"
+					/>
+				</div>
+				<ComboboxButton ref="trigger" class="hidden" />
+				<ComboboxOptions
+					v-show="open"
+					static
+					class="absolute z-20 mt-1 w-full rounded-lg bg-surface-elevation-2 border-2 border-outline-elevation-2 max-h-[13rem] flex flex-col"
+				>
+					<div
+						class="flex-1 my-1 overflow-y-auto px-1.5"
+						:class="options.length ? 'min-h-[6rem]' : 'min-h-[1rem]'"
+					>
+						<template v-if="options.length">
+							<ComboboxOption
+								v-for="option in options"
+								:key="option.value"
+								:value="option"
+								v-slot="{ active }"
 							>
-								<ComboboxOptions
-									class="my-1 min-h-[6rem] max-h-[12rem] overflow-y-auto px-1.5"
-									static
+								<li
+									:class="[
+										'flex cursor-pointer items-center rounded px-2 py-1 text-base',
+										{ 'bg-surface-gray-2': active },
+									]"
 								>
-									<ComboboxOption
-										v-for="option in options"
-										:key="option.value"
-										:value="option"
-										v-slot="{ active }"
-									>
-										<li
-											:class="[
-												'flex cursor-pointer items-center rounded px-2 py-1 text-base',
-												{ 'bg-surface-gray-2': active },
-											]"
-										>
-											<div class="flex flex-col gap-1 p-1">
-												<div class="text-base font-medium text-ink-gray-8">
-													{{ option.description }}
-												</div>
-												<div class="text-sm text-ink-gray-5">
-													{{ option.value }}
-												</div>
-											</div>
-										</li>
-									</ComboboxOption>
-									<div class="h-10"></div>
-									<div
-										v-if="attrs.onCreate"
-										class="absolute bottom-2 left-1 w-[99%] pt-2 bg-white border-t"
-									>
-										<Button
-											variant="ghost"
-											class="w-full !justify-start"
-											:label="__('Create New')"
-											@click="attrs.onCreate(close)"
-										>
-											<template #prefix>
-												<Plus class="h-4 w-4 stroke-1.5" />
-											</template>
-										</Button>
+									<div class="flex flex-col gap-1 p-1">
+										<div class="text-base-medium text-ink-gray-8">
+											{{
+												option.value === option.label
+													? option.description
+													: option.label
+											}}
+										</div>
+										<div class="text-sm text-ink-gray-5">
+											{{ option.value }}
+										</div>
 									</div>
-								</ComboboxOptions>
-							</div>
+								</li>
+							</ComboboxOption>
+						</template>
+
+						<div v-else class="text-ink-gray-7 px-4 py-2">
+							{{ __('No results found') }}
 						</div>
-					</template>
-				</Popover>
-			</Combobox>
-		</div>
-		<div v-if="values.length" class="grid grid-cols-2 gap-2 mt-1">
-			<div
-				v-for="value in values"
-				class="flex items-center justify-between break-all bg-surface-gray-2 text-ink-gray-7 word-wrap p-2 rounded-md mr-2"
-			>
-				<span class="break-all">
-					{{ value }}
-				</span>
-				<X
-					class="size-4 stroke-1.5 cursor-pointer"
-					@click="removeValue(value)"
-				/>
+					</div>
+
+					<div
+						v-if="attrs.onCreate"
+						class="p-1 bg-surface-base border-t rounded-b-lg"
+					>
+						<Button
+							variant="ghost"
+							class="w-full !justify-start"
+							:label="__('Create New')"
+							@click="attrs.onCreate()"
+						>
+							<template #prefix>
+								<span class="lucide-plus size-4" />
+							</template>
+						</Button>
+					</div>
+				</ComboboxOptions>
 			</div>
-		</div>
-		<!-- <ErrorMessage class="mt-2 pl-2" v-if="error" :message="error" /> -->
+		</Combobox>
+		<InputDescription
+			v-if="showDescription"
+			:id="descriptionId"
+			:description="description"
+		/>
+		<InputError v-if="hasError" :id="errorMessageId" :lines="errorLines" />
 	</div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
 	Combobox,
+	ComboboxButton,
 	ComboboxInput,
 	ComboboxOptions,
 	ComboboxOption,
 } from '@headlessui/vue'
-import { createResource, Popover, Button } from 'frappe-ui'
-import { ref, computed, nextTick, useAttrs } from 'vue'
+import { createResource, Button, toast } from 'frappe-ui'
+import { ref, computed, useAttrs, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { X, Plus } from 'lucide-vue-next'
+import type { Resource } from '@/types'
+import {
+	InputDescription,
+	InputError,
+	InputLabel,
+	useInputLabeling,
+} from '@/components/Form/labeling'
 
-const props = defineProps({
-	label: {
-		type: String,
-	},
-	size: {
-		type: String,
-		default: 'sm',
-	},
-	doctype: {
-		type: String,
-		required: true,
-	},
-	filters: {
-		type: Object,
-		default: () => ({}),
-	},
-	validate: {
-		type: Function,
-		default: null,
-	},
-	errorMessage: {
-		type: Function,
-		default: (value) => `${value} is an Invalid value`,
-	},
-	required: {
-		type: Boolean,
-	},
-})
+interface SelectOption {
+	label: string
+	value: string
+	description?: string
+}
 
-const values = defineModel()
+const props = withDefaults(
+	defineProps<{
+		label?: string
+		description?: string
+		error?: string
+		size?: string
+		doctype: string
+		filters?: Record<string, unknown> | unknown[]
+		url?: string
+		searchParams?: Record<string, unknown>
+		validate?: (value: string) => boolean
+		errorMessage?: (value: string) => string
+		required?: boolean
+	}>(),
+	{
+		filters: () => ({}),
+		url: 'frappe.desk.search.search_link',
+		searchParams: () => ({}),
+		errorMessage: (value: string) => `${value} is an Invalid value`,
+	}
+)
+
+const values = defineModel<string[]>({ default: () => [] })
 const attrs = useAttrs()
-const emails = ref([])
-const search = ref(null)
-const error = ref(null)
-const query = ref('')
-const text = ref('')
-const showOptions = ref(false)
+const {
+	inputId,
+	labelId,
+	descriptionId,
+	errorMessageId,
+	hasError,
+	errorLines,
+	showDescription,
+} = useInputLabeling(props)
+const trigger = ref<{ $el: HTMLElement } | null>(null)
+const query = ref<string>('')
+const text = ref<string>('')
+const selectedValue = ref<SelectOption | null>(null)
 
-const selectedValue = computed({
-	get: () => query.value || '',
-	set: (val) => {
-		query.value = ''
-		if (val) {
-			showOptions.value = false
-		}
-		val?.value && addValue(val.value)
-	},
+watch(selectedValue, (val) => {
+	if (!val?.value) return
+	query.value = ''
+	addValue(val.value)
+	selectedValue.value = null
 })
 
 watchDebounced(
 	query,
 	(val) => {
-		val = val || ''
-		if (text.value === val) return
-		text.value = val
-		reload(val)
+		const v = val || ''
+		if (text.value === v) return
+		text.value = v
+		reload(v)
 	},
 	{ debounce: 300, immediate: true }
 )
 
-const filterOptions = createResource({
-	url: 'frappe.desk.search.search_link',
-	method: 'POST',
-	cache: [text.value, props.doctype],
-	auto: true,
-	params: {
-		txt: text.value,
-		doctype: props.doctype,
+watch(
+	() => [props.filters, props.searchParams],
+	() => {
+		reload(text.value)
 	},
+	{ deep: true }
+)
+
+function getParams(txt: string) {
+	return {
+		txt,
+		doctype: props.doctype,
+		filters: JSON.stringify(props.filters),
+		...props.searchParams,
+	}
+}
+
+const filterOptions = createResource({
+	url: props.url,
+	method: 'POST',
+}) as Resource<SelectOption[] | null>
+
+const options = computed<SelectOption[]>(() => {
+	const allOptions = filterOptions.data || []
+	return allOptions.filter((option) => !values.value?.includes(option.value))
 })
 
-const options = computed(() => {
-	return filterOptions.data || []
-})
-
-function reload(val) {
+function reload(val: string) {
 	filterOptions.update({
-		params: {
-			txt: val,
-			doctype: props.doctype,
-		},
+		params: getParams(val),
 	})
 	filterOptions.reload()
 }
 
-const addValue = (value) => {
-	error.value = null
-	if (value) {
-		const splitValues = value.split(',')
-		splitValues.forEach((value) => {
-			value = value.trim()
-			if (value) {
-				// check if value is not already in the values array
-				if (!values.value?.includes(value)) {
-					// check if value is valid
-					if (value && props.validate && !props.validate(value)) {
-						error.value = props.errorMessage(value)
-						return
-					}
-					// add value to values array
-					if (!values.value) {
-						values.value = [value]
-					} else {
-						values.value.push(value)
-					}
-					value = value.replace(value, '')
-				}
-			}
-		})
-		!error.value && (value = '')
+function onFocus() {
+	if (!filterOptions.data?.length) {
+		reload('')
 	}
+	trigger.value?.$el.click()
 }
 
-const removeValue = (value) => {
-	values.value = values.value.filter((v) => v !== value)
+function addValue(value: string) {
+	if (!value) return
+
+	const splitValues = value.split(',')
+	const newValues = [...(values.value || [])]
+
+	splitValues.forEach((raw) => {
+		const val = raw.trim()
+		if (!val) return
+		if (newValues.includes(val)) return
+
+		if (props.validate && !props.validate(val)) {
+			toast.error(props.errorMessage(val))
+			return
+		}
+
+		newValues.push(val)
+	})
+
+	values.value = newValues
 }
 
-const removeLastValue = () => {
-	if (query.value) return
-
-	let emailRef = emails.value[emails.value.length - 1]?.$el
-	if (document.activeElement === emailRef) {
-		values.value.pop()
-		nextTick(() => {
-			if (values.value.length) {
-				emailRef = emails.value[emails.value.length - 1].$el
-				emailRef?.focus()
-			} else {
-				setFocus()
-			}
-		})
-	} else {
-		emailRef?.focus()
-	}
+function removeValue(value: string) {
+	values.value = (values.value || []).filter((v) => v !== value)
 }
-
-function setFocus() {
-	search.value.$el.focus()
-}
-
-defineExpose({ setFocus })
-
-const labelClasses = computed(() => {
-	return [
-		{
-			sm: 'text-xs',
-			md: 'text-base',
-		}[props.size || 'sm'],
-		'text-ink-gray-5',
-	]
-})
 </script>

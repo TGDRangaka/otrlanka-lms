@@ -1,10 +1,13 @@
-name: UI
+name: UI Tests
 
 on:
   pull_request:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: 
+      - main
+      - develop
+      - main-hotfix
 
 permissions:
   # Do not change this as GITHUB_TOKEN is being used by roulette
@@ -13,14 +16,14 @@ permissions:
 jobs:
   
   test:
+    name: UI Tests (Cypress) - ${{ matrix.containers }}
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'frappe' }}
     timeout-minutes: 60
 
     strategy:
       fail-fast: false
-
-    name: UI Tests (Cypress)
+      matrix:
+        containers: [1, 2]
 
     services:
       mariadb:
@@ -36,9 +39,9 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.14'
 
       - name: Check for valid Python & Merge Conflicts
         run: |
@@ -48,9 +51,9 @@ jobs:
               exit 1
           fi
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 24
           check-latest: true
 
       - name: Add to Hosts
@@ -111,7 +114,24 @@ jobs:
         run: cd ~/frappe-bench/ && bench --site lms.test run-ui-tests lms --headless
         env:
           CYPRESS_BASE_URL: http://lms.test:8000
-          CYPRESS_RECORD_KEY: 095366ec-7b9f-41bd-aeec-03bb76d627fe
+          SPLIT: ${{ strategy.job-total }}
+          SPLIT_INDEX: ${{ strategy.job-index }}
+
+      - name: Upload Cypress screenshots if tests fail
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots-${{ matrix.containers }}
+          path: /home/runner/frappe-bench/apps/lms/cypress/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload Cypress videos if tests fail
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos-${{ matrix.containers }}
+          path: ~/frappe-bench/apps/lms/cypress/videos
+          if-no-files-found: ignore
 
       - name: Stop server and wait for coverage file
         run: |

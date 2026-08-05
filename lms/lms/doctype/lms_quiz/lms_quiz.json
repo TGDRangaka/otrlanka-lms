@@ -34,8 +34,7 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Title",
-   "reqd": 1,
-   "unique": 1
+   "reqd": 1
   },
   {
    "fieldname": "questions",
@@ -159,7 +158,7 @@
    "link_fieldname": "quiz"
   }
  ],
- "modified": "2025-06-27 20:00:15.660323",
+ "modified": "2026-04-01 16:56:28.727089",
  "modified_by": "sayali@frappe.io",
  "module": "LMS",
  "name": "LMS Quiz",
@@ -209,6 +208,18 @@
    "report": 1,
    "role": "LMS Student",
    "share": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Batch Evaluator",
+   "share": 1,
+   "write": 1
   }
  ],
  "row_format": "Dynamic",

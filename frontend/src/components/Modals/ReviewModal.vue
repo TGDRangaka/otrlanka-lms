@@ -1,19 +1,17 @@
 <template>
 	<Dialog
-		v-model="show"
-		:options="{
-			title: __('Write a Review'),
-			size: 'xl',
-			actions: [
-				{
-					label: 'Submit',
-					variant: 'solid',
-					onClick: (close) => submitReview(close),
-				},
-			],
-		}"
+		v-model:open="show"
+		:title="__('Write a Review')"
+		size="xl"
+		:actions="[
+			{
+				label: 'Submit',
+				variant: 'solid',
+				onClick: ({ close }) => submitReview(close),
+			},
+		]"
 	>
-		<template #body-content>
+		<template #default>
 			<div class="flex flex-col gap-4">
 				<Rating v-model="review.rating" :label="__('Rating')" />
 				<FormControl
@@ -26,40 +24,40 @@
 		</template>
 	</Dialog>
 </template>
-<script setup>
+<script setup lang="ts">
 import { Dialog, FormControl, createResource, toast, Rating } from 'frappe-ui'
 import { reactive } from 'vue'
+import type { Resource } from '@/types'
 
-const show = defineModel()
-const reviews = defineModel('reloadReviews')
-const hasReviewed = defineModel('hasReviewed')
+const show = defineModel<boolean>()
+const reviews = defineModel<Resource<unknown> | undefined>('reloadReviews')
+const hasReviewed = defineModel<Resource<unknown> | undefined>('hasReviewed')
 
-let review = reactive({
+const review = reactive<{ review: string; rating: number }>({
 	review: '',
 	rating: 0,
 })
 
-const props = defineProps({
-	courseName: {
-		type: String,
-		required: true,
-	},
-})
+const props = defineProps<{
+	courseName: string
+}>()
 
 const createReview = createResource({
 	url: 'frappe.client.insert',
-	makeParams(values) {
+	makeParams() {
 		return {
 			doc: {
 				doctype: 'LMS Course Review',
 				course: props.courseName,
-				...values,
+				review: review.review,
+				// the Rating control is 0–5; the doctype stores a 0–1 fraction
+				rating: review.rating / 5,
 			},
 		}
 	},
 })
-function submitReview(close) {
-	review.rating = review.rating / 5
+
+function submitReview(close: () => void) {
 	createReview.submit(review, {
 		validate() {
 			if (!review.rating) {
@@ -67,13 +65,14 @@ function submitReview(close) {
 			}
 		},
 		onSuccess() {
-			reviews.value.reload()
-			hasReviewed.value.reload()
+			reviews.value?.reload()
+			hasReviewed.value?.reload()
+			close()
 		},
-		onError(err) {
-			toast.error(err.messages?.[0] || err)
+		onError(err: { messages?: string[] } | string) {
+			const msg = typeof err === 'string' ? err : err.messages?.[0] ?? 'Error'
+			toast.error(msg)
 		},
 	})
-	close()
 }
 </script>

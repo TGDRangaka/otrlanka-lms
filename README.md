@@ -24,7 +24,9 @@
 Frappe Learning is an easy-to-use learning system that helps you bring structure to your content.
 
 ### Motivation
-In 2021, we were looking for a Learning Management System to launch [Mon.School](https://mon.school) for FOSS United. We checked out Moodle, but it didn’t feel right. The forms were unnecessarily lengthy and the UI was confusing. It shouldn't be this hard to create a course right? So I started making a learning system for Mon.School which soon became a product in itself. The aim is to have a simple platform that anyone can use to launch a course of their own and make knowledge sharing easier.
+In 2021, we were looking for a Learning Management System to launch ~~Mon.School~~[^1] for FOSS United. We checked out Moodle, but it didn’t feel right. The forms were unnecessarily lengthy and the UI was confusing. It shouldn't be this hard to create a course right? So I started making a learning system ~~for Mon.School which soon became a product in itself~~. The aim is to have a simple platform that anyone can use to launch a course of their own and make knowledge sharing easier.
+
+[^1]: ~~Mon.School~~ __*Now this domain is not owned by Frappe Team.*__
 
 ### Key Features
 
@@ -152,11 +154,19 @@ You need Docker, docker-compose and git setup on your machine. Refer [Docker doc
 To setup the repository locally follow the steps mentioned below:
 
 1. Install bench and setup a `frappe-bench` directory by following the [Installation Steps](https://frappeframework.com/docs/user/en/installation)
-1. Start the server by running `bench start`
-1. In a separate terminal window, create a new site by running `bench new-site learning.test`
-1. Map your site to localhost with the command `bench --site learning.test add-to-hosts`
-1. Get the Learning app. Run `bench get-app https://github.com/frappe/lms`
-1. Run `bench --site learning.test install-app lms`.
+1. Start the server by running
+	```sh
+	$ bench start
+	```
+1. In a separate terminal window, run the following commands.
+	```sh
+	$ bench new-site learning.test
+ 	$ bench --site learning.test add-to-hosts
+ 	$ bench get-app https://github.com/frappe/payments
+ 	$ bench get-app https://github.com/frappe/lms
+ 	$ bench --site learning.test install-app lms
+ 	
+	```
 1. Now open the URL `http://learning.test:8000/lms` in your browser, you should see the app running
 
 ## Learn and connect

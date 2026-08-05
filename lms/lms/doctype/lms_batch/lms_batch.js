@@ -3,19 +3,19 @@
 
 frappe.ui.form.on("LMS Batch", {
 	onload: function (frm) {
-		frm.set_query("student", "students", function (doc) {
-			return {
-				filters: {
-					ignore_user_type: 1,
-				},
-			};
-		});
-
 		frm.set_query("reference_doctype", "timetable", function () {
 			let doctypes = ["Course Lesson", "LMS Quiz", "LMS Assignment"];
 			return {
 				filters: {
 					name: ["in", doctypes],
+				},
+			};
+		});
+
+		frm.set_query("course", "courses", function () {
+			return {
+				filters: {
+					published: 1,
 				},
 			};
 		});
@@ -48,8 +48,9 @@ frappe.ui.form.on("LMS Batch", {
 	},
 
 	refresh: (frm) => {
+		const lmsPath = frappe.boot.lms_path || "lms";
 		frm.add_web_link(
-			`/lms/batches/details/${frm.doc.name}`,
+			`/${lmsPath}/batches/${frm.doc.name}`,
 			"See on website"
 		);
 	},

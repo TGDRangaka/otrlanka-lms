@@ -1,21 +1,24 @@
 <template>
-	<div class="text-lg font-semibold mb-4">
+	<div class="text-lg-semibold mb-4 text-ink-gray-9">
 		{{ __('My Notes') }}
 	</div>
-	<TextEditor
+	<RichTextEditor
 		:content="note"
 		:placeholder="__('Make notes for quick revision. Press / for menu.')"
 		@change="(val: string) => updateNoteText(val)"
 		:editable="true"
+		:uploadArgs="{
+			private: true,
+		}"
 		editorClass="prose prose-sm min-h-[200px] max-w-none"
 	/>
 </template>
 <script setup lang="ts">
-import { TextEditor } from 'frappe-ui'
 import { useDebounceFn } from '@vueuse/core'
 import { inject, ref, onMounted, watch } from 'vue'
-import type { Note, Notes } from '@/components/Notes/types'
+import type { Note, Notes } from '@/types'
 import { blockQuotesClick } from '@/utils/'
+import RichTextEditor from '@/components/RichTextEditor.vue'
 
 const note = ref<string | null>(null)
 const currentNoteName = ref<string | null>(null)

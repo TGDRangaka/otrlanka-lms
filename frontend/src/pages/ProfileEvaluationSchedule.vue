@@ -1,10 +1,10 @@
 <template>
 	<div class="mt-7 mb-20">
-		<div class="flex h-screen flex-col overflow-hidden">
+		<div class="flex h-dvh flex-col overflow-hidden">
 			<Calendar
 				v-if="evaluations.data?.length"
 				:config="{
-					defaultMode: 'Month',
+					defaultMode: 'Week',
 					disableModes: ['Day', 'Week'],
 					redundantCellHeight: 100,
 					enableShortcuts: false,
@@ -14,7 +14,7 @@
 			>
 				<template #header="{ currentMonthYear, decrement, increment }">
 					<div class="mb-2 flex justify-between">
-						<span class="text-lg text-ink-gray-9 font-semibold">
+						<span class="text-lg-semibold text-ink-gray-9">
 							{{ currentMonthYear }}
 						</span>
 						<div class="flex gap-x-1">
@@ -22,13 +22,15 @@
 								@click="decrement()"
 								variant="ghost"
 								class="h-4 w-4"
-								icon="chevron-left"
+								icon="lucide-chevron-left"
+								:label="__('Previous')"
 							/>
 							<Button
 								@click="increment()"
 								variant="ghost"
 								class="h-4 w-4"
-								icon="chevron-right"
+								icon="lucide-chevron-right"
+								:label="__('Next')"
 							/>
 						</div>
 					</div>
@@ -57,7 +59,7 @@ const props = defineProps({
 const evaluations = createListResource({
 	doctype: 'LMS Certificate Request',
 	filters: {
-		evaluator: user.data?.name,
+		evaluator: props.profile.data?.name,
 		status: ['!=', 'Cancelled'],
 	},
 	fields: [
@@ -73,6 +75,7 @@ const evaluations = createListResource({
 		'date',
 		'start_time',
 		'end_time',
+		'timezone',
 		'google_meet_link',
 	],
 	auto: true,
@@ -87,8 +90,10 @@ const evaluations = createListResource({
 			mappedData.participant = d.member_name
 			mappedData.id = d.name
 			mappedData.venue = d.google_meet_link
-			mappedData.fromDate = `${d.date} ${d.start_time}`
-			mappedData.toDate = `${d.date} ${d.end_time}`
+			mappedData.fromDate = `${d.date}`
+			mappedData.toDate = `${d.date}`
+			mappedData.fromTime = d.start_time
+			mappedData.toTime = d.end_time
 			mappedData.color = 'green'
 
 			return mappedData

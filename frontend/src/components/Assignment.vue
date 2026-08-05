@@ -5,10 +5,10 @@
 		:class="{ 'border rounded-lg overflow-auto': !showTitle }"
 	>
 		<div
-			class="border-r p-5 overflow-y-auto h-[calc(100vh-3.2rem)]"
+			class="border-e p-5 overflow-y-auto h-[calc(100vh-3.2rem)]"
 			:class="{ 'h-full': !showTitle }"
 		>
-			<div v-if="showTitle" class="text-lg font-semibold mb-5 text-ink-gray-9">
+			<div v-if="showTitle" class="text-lg-semibold mb-5 text-ink-gray-9">
 				<div v-if="submissionName === 'new'">
 					{{ __('Submission by') }} {{ user.data?.full_name }}
 				</div>
@@ -16,22 +16,22 @@
 					{{ __('Submission by') }} {{ submissionResource.doc?.member_name }}
 				</div>
 			</div>
-			<div class="text-sm text-ink-gray-7 font-medium mb-2">
-				{{ __('Question') }}:
+			<div class="text-ink-gray-9 font-semibold mb-5">
+				{{ __('Assignment') }}: {{ assignment.data.title }}
 			</div>
 			<div
-				v-html="assignment.data.question"
+				v-html="sanitizeRichHTML(assignment.data.question)"
 				class="ProseMirror prose prose-table:table-fixed prose-td:p-2 prose-th:p-2 prose-td:border prose-th:border prose-td:border-outline-gray-2 prose-th:border-outline-gray-2 prose-td:relative prose-th:relative prose-th:bg-surface-gray-2 prose-sm max-w-none !whitespace-normal"
 			></div>
 		</div>
 
-		<div class="flex flex-col">
-			<div class="p-5">
-				<div class="flex items-center justify-between mb-4">
+		<div class="flex flex-col overflow-y-auto">
+			<div class="p-5 space-y-5">
+				<div class="flex items-center justify-between">
 					<div class="font-semibold text-ink-gray-9">
 						{{ __('Submission') }}
 					</div>
-					<div class="flex items-center space-x-2">
+					<div class="flex items-center gap-x-2">
 						<Badge v-if="isDirty" theme="orange">
 							{{ __('Not Saved') }}
 						</Badge>
@@ -42,9 +42,19 @@
 						>
 							{{ submissionResource.doc?.status }}
 						</Badge>
-						<Button variant="solid" @click="submitAssignment()">
-							{{ __('Save') }}
-						</Button>
+						<ShortcutTooltip
+							v-if="canModifyAssignment || canGradeSubmission"
+							:label="__('Save')"
+							combo="Mod+S"
+						>
+							<Button
+								variant="solid"
+								:loading="isSubmitting"
+								@click="submitAssignment()"
+							>
+								{{ __('Save') }}
+							</Button>
+						</ShortcutTooltip>
 					</div>
 				</div>
 				<div
@@ -53,7 +63,7 @@
 						!['Pass', 'Fail'].includes(submissionResource.doc?.status) &&
 						submissionResource.doc?.owner == user.data?.name
 					"
-					class="bg-surface-blue-2 text-ink-blue-2 p-3 rounded-md leading-5 text-sm mb-4"
+					class="bg-surface-blue-2 text-ink-blue-5 p-3 rounded-md leading-5 text-sm"
 				>
 					{{ __("You've successfully submitted the assignment.") }}
 					{{
@@ -63,14 +73,25 @@
 					}}
 					{{ __('Feel free to make edits to your submission if needed.') }}
 				</div>
-				<div v-if="showUploader()">
-					<div class="text-xs text-ink-gray-5 mt-1 mb-2">
-						{{ __('Add your assignment as {0}').format(assignment.data.type) }}
+				<div v-if="showUploader()" class="border rounded-lg p-3">
+					<div class="font-semibold mb-2">
+						{{ __('Upload Assignment') }}
+					</div>
+					<div class="text-ink-gray-5 text-sm mt-1 mb-4">
+						{{
+							__('You can only upload {0} files').format(assignment.data.type)
+						}}
 					</div>
 					<FileUploader
-						v-if="!submissionFile"
+						v-if="!attachment"
 						:fileTypes="getType()"
-						:validateFile="validateFile"
+						:uploadArgs="{
+							private: true,
+						}"
+						:validateFile="
+							(file) =>
+								validateFile(file, true, assignment.data.type.toLowerCase())
+						"
 						@success="(file) => saveSubmission(file)"
 					>
 						<template #default="{ uploading, progress, openFileSelector }">
@@ -84,50 +105,54 @@
 						</template>
 					</FileUploader>
 					<div v-else>
-						<div class="flex text-ink-gray-7">
-							<div class="border self-start rounded-md p-2 mr-2">
-								<FileText class="h-5 w-5 stroke-1.5" />
-							</div>
+						<div class="flex items-center text-ink-gray-7">
 							<a
-								:href="submissionFile.file_url"
+								:href="attachment"
 								target="_blank"
-								class="flex flex-col cursor-pointer !no-underline"
+								class="cursor-pointer !no-underline text-sm leading-5"
 							>
-								<span class="text-sm leading-5">
-									{{ submissionFile.file_name }}
-								</span>
-								<span class="text-sm text-ink-gray-5 mt-1">
-									{{ getFileSize(submissionFile.file_size) }}
-								</span>
+								<div class="flex items-center">
+									<div class="border rounded-md p-2 me-2">
+										<span class="lucide-file-text h-5 w-5" />
+									</div>
+									<span>
+										{{ attachment.split('/').pop() }}
+									</span>
+								</div>
 							</a>
-							<X
+							<button
 								v-if="canModifyAssignment"
+								type="button"
+								:aria-label="__('Remove submission')"
 								@click="removeSubmission()"
-								class="bg-surface-gray-3 rounded-md cursor-pointer stroke-1.5 w-5 h-5 p-1 ml-4"
+								class="lucide-x bg-surface-gray-3 rounded-md cursor-pointer w-5 h-5 p-1 ms-4"
 							/>
 						</div>
 					</div>
 				</div>
 				<div v-else-if="assignment.data.type == 'URL'">
-					<div class="text-xs text-ink-gray-5 mb-1">
+					<div class="text-p-sm-medium text-ink-gray-7 mb-1.5">
 						{{ __('Enter a URL') }}
 					</div>
 					<FormControl
 						v-model="answer"
 						type="text"
-						:readonly="!canModifyAssignment"
+						:aria-label="__('Enter a URL')"
 					/>
 				</div>
 				<div v-else>
 					<div class="text-sm mb-2 text-ink-gray-7">
 						{{ __('Write your answer here') }}
 					</div>
-					<TextEditor
+					<RichTextEditor
 						:content="answer"
 						@change="(val) => (answer = val)"
 						:editable="true"
 						:fixedMenu="true"
-						editorClass="prose-sm max-w-none border-b border-x bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem]"
+						:uploadArgs="{
+							private: true,
+						}"
+						editorClass="prose-sm max-w-none border-b border-x border-outline-elevation-2 bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem]"
 					/>
 				</div>
 
@@ -136,14 +161,14 @@
 						user.data?.name == submissionResource.doc?.owner &&
 						submissionResource.doc?.comments
 					"
-					class="mt-8 p-3 bg-surface-blue-2 rounded-md"
+					class="mt-8 p-3 border rounded-lg bg-surface-gray-2"
 				>
-					<div class="text-sm text-ink-gray-5 font-medium mb-2">
-						{{ __('Comments by Evaluator') }}:
+					<div class="text-ink-gray-5 mb-4">
+						{{ __('Comments by Evaluator') }}
 					</div>
 					<div
-						class="leading-5 text-ink-gray-9"
-						v-html="submissionResource.doc.comments"
+						class="leading-6 text-ink-gray-9"
+						v-html="sanitizeRichHTML(submissionResource.doc.comments)"
 					></div>
 				</div>
 
@@ -160,10 +185,10 @@
 						:options="submissionStatusOptions"
 					/>
 					<div>
-						<div class="text-sm text-ink-gray-5 mb-1">
+						<div class="text-p-sm-medium text-ink-gray-7 mb-1.5">
 							{{ __('Comments') }}
 						</div>
-						<TextEditor
+						<RichTextEditor
 							:content="comments"
 							@change="
 								(val) => {
@@ -173,7 +198,10 @@
 							"
 							:editable="true"
 							:fixedMenu="true"
-							editorClass="prose-sm max-w-none border-b border-x bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem]"
+							:uploadArgs="{
+								private: true,
+							}"
+							editorClass="prose-sm max-w-none border-b border-x border-outline-elevation-2 bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem]"
 						/>
 					</div>
 				</div>
@@ -182,6 +210,7 @@
 	</div>
 </template>
 <script setup>
+import { sanitizeRichHTML } from '@/utils/sanitizeRichHTML'
 import {
 	Badge,
 	Button,
@@ -190,16 +219,20 @@ import {
 	createDocumentResource,
 	FileUploader,
 	FormControl,
-	TextEditor,
 	toast,
 } from 'frappe-ui'
-import { computed, inject, onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import { FileText, X } from 'lucide-vue-next'
-import { getFileSize } from '@/utils'
+import { computed, inject, ref, watch } from 'vue'
+import ShortcutTooltip from '@/components/ShortcutTooltip.vue'
+import {
+	useKeyboardShortcuts,
+	saveShortcut,
+} from '@/composables/useKeyboardShortcuts'
 import { useRouter } from 'vue-router'
+import { validateFile } from '@/utils'
+import RichTextEditor from '@/components/RichTextEditor.vue'
 
-const submissionFile = ref(null)
 const answer = ref(null)
+const attachment = ref(null)
 const comments = ref(null)
 const router = useRouter()
 const user = inject('$user')
@@ -220,19 +253,9 @@ const props = defineProps({
 	},
 })
 
-onMounted(() => {
-	window.addEventListener('keydown', keyboardShortcut)
-})
-
-const keyboardShortcut = (e) => {
-	if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
-		submitAssignment()
-		e.preventDefault()
-	}
-}
-
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', keyboardShortcut)
+useKeyboardShortcuts({
+	ignoreTyping: false,
+	shortcuts: [saveShortcut(() => submitAssignment())],
 })
 
 const assignment = createResource({
@@ -249,129 +272,115 @@ const assignment = createResource({
 	},
 })
 
-const newSubmission = createResource({
-	url: 'frappe.client.insert',
-	makeParams(values) {
-		let doc = {
-			doctype: 'LMS Assignment Submission',
-			assignment: props.assignmentID,
-			member: user.data?.name,
-		}
-		if (showUploader()) {
-			doc.assignment_attachment = submissionFile.value.file_url
-		} else {
-			doc.answer = answer.value
-		}
-		return {
-			doc: doc,
-		}
-	},
-})
-
-const imageResource = createResource({
-	url: 'lms.lms.api.get_file_info',
-	makeParams(values) {
-		return {
-			file_url: values.image,
-		}
-	},
-	auto: false,
-	onSuccess(data) {
-		submissionFile.value = data
-	},
-})
-
 const submissionResource = createDocumentResource({
 	doctype: 'LMS Assignment Submission',
 	name: props.submissionName,
+	auto: false,
 	onError(err) {
 		toast.error(err.messages?.[0] || err)
 	},
-	auto: false,
-	cache: [user.data?.name, props.assignmentID],
 })
 
 watch(submissionResource, () => {
-	if (submissionResource.doc) {
-		if (submissionResource.doc.assignment_attachment) {
-			imageResource.reload({
-				image: submissionResource.doc.assignment_attachment,
-			})
-		}
-		if (submissionResource.doc.answer) {
-			answer.value = submissionResource.doc.answer
-		}
-		if (submissionResource.doc.comments) {
-			comments.value = submissionResource.doc.comments
-		}
-		if (submissionResource.isDirty) {
-			isDirty.value = true
-		} else if (showUploader() && !submissionFile.value) {
-			isDirty.value = true
-		} else if (!showUploader() && !answer.value) {
-			isDirty.value = true
-		} else {
-			isDirty.value = false
-		}
+	if (!submissionResource.doc) return
+	if (submissionResource.doc.answer) {
+		answer.value = submissionResource.doc.answer
+	}
+	if (submissionResource.doc.assignment_attachment) {
+		attachment.value = submissionResource.doc.assignment_attachment
+	}
+	if (submissionResource.doc.comments) {
+		comments.value = submissionResource.doc.comments
 	}
 })
 
-watch(submissionFile, () => {
-	if (props.submissionName == 'new' && submissionFile.value) {
-		isDirty.value = true
-	}
-})
+const isSubmitting = ref(false)
 
 const submitAssignment = () => {
-	if (props.submissionName != 'new') {
-		let evaluator =
-			submissionResource.doc && submissionResource.doc.owner != user.data?.name
-				? user.data?.name
-				: null
+	if (isSubmitting.value) return
+	isSubmitting.value = true
 
-		submissionResource.setValue.submit(
-			{
-				...submissionResource.doc,
-				assignment_attachment: submissionFile.value?.file_url,
-				evaluator: evaluator,
-				comments: comments.value,
-				answer: answer.value,
-			},
-			{
-				onSuccess(data) {
-					toast.success(__('Changes saved successfully'))
-				},
-			}
-		)
+	if (props.submissionName != 'new') {
+		updateSubmission()
 	} else {
 		addNewSubmission()
 	}
 }
 
+const prepareSubmissionDoc = () => {
+	let doc = {
+		doctype: 'LMS Assignment Submission',
+		assignment: props.assignmentID,
+		member: user.data?.name,
+	}
+	if (!showUploader()) {
+		doc.answer = answer.value
+	} else {
+		doc.assignment_attachment = attachment.value
+	}
+	return doc
+}
+
 const addNewSubmission = () => {
-	newSubmission.submit(
-		{},
+	let doc = prepareSubmissionDoc()
+	if (!doc.assignment_attachment && !doc.answer) {
+		toast.error(
+			__('Please provide an answer or upload a file before submitting.')
+		)
+		isSubmitting.value = false
+		return
+	}
+	call('frappe.client.insert', {
+		doc: doc,
+	})
+		.then((data) => {
+			toast.success(__('Assignment submitted successfully'))
+			router.push({
+				name: 'AssignmentSubmission',
+				params: {
+					assignmentID: props.assignmentID,
+					submissionName: data.name,
+				},
+				query: { fromLesson: router.currentRoute.value.query.fromLesson },
+			})
+			markLessonProgress()
+			isDirty.value = false
+			submissionResource.name = data.name
+			submissionResource.reload()
+		})
+		.catch((err) => {
+			toast.error(err.messages?.[0] || err)
+			console.error(err)
+		})
+		.finally(() => {
+			isSubmitting.value = false
+		})
+}
+
+const updateSubmission = () => {
+	let evaluator =
+		submissionResource.doc && submissionResource.doc.owner != user.data?.name
+			? user.data?.name
+			: null
+
+	submissionResource.setValue.submit(
+		{
+			...submissionResource.doc,
+			evaluator: evaluator,
+			comments: comments.value,
+			answer: answer.value,
+			assignment_attachment: attachment.value,
+		},
 		{
 			onSuccess(data) {
-				toast.success(__('Assignment submitted successfully'))
-				if (router.currentRoute.value.name == 'AssignmentSubmission') {
-					router.push({
-						name: 'AssignmentSubmission',
-						params: {
-							assignmentID: props.assignmentID,
-							submissionName: data.name,
-						},
-						query: { fromLesson: router.currentRoute.value.query.fromLesson },
-					})
-				} else {
-					markLessonProgress()
-					router.go()
-				}
-				submissionResource.name = data.name
-				submissionResource.reload()
+				isDirty.value = false
+				isSubmitting.value = false
+				toast.success(__('Changes saved successfully'))
 			},
 			onError(err) {
+				isSubmitting.value = false
 				toast.error(err.messages?.[0] || err)
+				console.error(err)
 			},
 		}
 	)
@@ -379,19 +388,21 @@ const addNewSubmission = () => {
 
 const saveSubmission = (file) => {
 	isDirty.value = true
-	submissionFile.value = file
+	attachment.value = file.file_url
 }
 
 const markLessonProgress = () => {
-	if (router.currentRoute.value.name == 'Lesson') {
-		let courseName = router.currentRoute.value.params.courseName
-		let chapterNumber = router.currentRoute.value.params.chapterNumber
-		let lessonNumber = router.currentRoute.value.params.lessonNumber
+	let pathname = window.location.pathname.split('/')
+	if (!pathname.includes('courses'))
+		pathname = window.parent.location.pathname.split('/')
+	if (pathname[2] != 'courses') return
+	let lessonIndex = pathname.pop().split('-')
 
+	if (lessonIndex.length == 2) {
 		call('lms.lms.api.mark_lesson_progress', {
-			course: courseName,
-			chapter_number: chapterNumber,
-			lesson_number: lessonNumber,
+			course: pathname[3],
+			chapter_number: lessonIndex[0],
+			lesson_number: lessonIndex[1],
 		})
 	}
 }
@@ -413,24 +424,9 @@ const getType = () => {
 	}
 }
 
-const validateFile = (file) => {
-	let type = assignment.data?.type
-	let extension = file.name.split('.').pop().toLowerCase()
-	if (type == 'Image' && !['jpg', 'jpeg', 'png'].includes(extension)) {
-		return 'Only image file is allowed.'
-	} else if (
-		type == 'Document' &&
-		!['doc', 'docx', 'xml'].includes(extension)
-	) {
-		return 'Only document file is allowed.'
-	} else if (type == 'PDF' && !['pdf'].includes(extension)) {
-		return 'Only PDF file is allowed.'
-	}
-}
-
 const removeSubmission = () => {
 	isDirty.value = true
-	submissionFile.value = null
+	attachment.value = null
 }
 
 const canGradeSubmission = computed(() => {
@@ -444,11 +440,15 @@ const canGradeSubmission = computed(() => {
 })
 
 const canModifyAssignment = computed(() => {
-	return (
-		!submissionResource.doc ||
-		(submissionResource.doc?.owner == user.data?.name &&
-			submissionResource.doc?.status == 'Not Graded')
-	)
+	if (props.submissionName == 'new') {
+		return true
+	} else if (
+		submissionResource.doc?.owner == user.data?.name &&
+		submissionResource.doc?.status == 'Not Graded'
+	) {
+		return true
+	}
+	return false
 })
 
 const submissionStatusOptions = computed(() => {

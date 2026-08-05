@@ -1,41 +1,41 @@
 <template>
-	<Dialog
-		v-model="show"
-		:options="{
-			size: '4xl',
-			title: __('Video Statistics for {0}').format(lessonTitle),
-		}"
-	>
-		<template #body-content>
+	<Dialog v-model:open="show" size="4xl" :title="__('Video Statistics')">
+		<template #default>
 			<div class="text-base">
 				<div class="flex items-center justify-between">
 					<TabButtons
 						v-if="tabs.length > 1"
-						:buttons="tabs"
+						:options="tabs"
 						v-model="currentTab"
 						class="w-fit"
 					/>
 					<!-- <FormControl
 						v-model="searchText"
 						:placeholder="__('Search by Member')"
-						class="mt-2 mr-5 w-[25%]"
+						class="mt-2 me-5 w-[25%]"
 					/> -->
 				</div>
-				<div v-if="currentTab" class="mt-4">
+				<div
+					v-if="currentTab"
+					:class="{
+						'mt-5': tabs.length > 1,
+					}"
+				>
 					<div class="grid grid-cols-[55%,40%] gap-5">
 						<div
-							class="space-y-5 border rounded-md p-2 pt-4 h-[70vh] overflow-y-auto"
+							class="space-y-5 border rounded-md p-2 pt-4 max-h-[70vh] overflow-y-auto"
 						>
 							<div class="grid grid-cols-[70%,30%] text-sm text-ink-gray-5">
 								<div class="px-4">
 									{{ __('Member') }}
 								</div>
 								<div class="text-center">
-									{{ __('Watch Time') }}
+									{{ __('Watch Time (mins)') }}
 								</div>
 							</div>
 							<div
 								v-for="row in currentTabData"
+								:key="row.name"
 								class="hover:bg-surface-gray-1 cursor-pointer rounded-md py-1 px-2"
 							>
 								<router-link
@@ -45,7 +45,7 @@
 									}"
 								>
 									<div class="grid grid-cols-[70%,30%] items-center">
-										<div class="flex items-center space-x-2">
+										<div class="flex items-center gap-x-3">
 											<Avatar
 												:image="row.member_image"
 												:label="row.member_name"
@@ -68,15 +68,16 @@
 							</div>
 						</div>
 						<div class="space-y-5">
-							<NumberChart
-								class="border rounded-md"
-								:config="{
-									title: __('Average Watch Time'),
-									value: averageWatchTime,
-								}"
+							<NumberChartGraph
+								:title="__('Average Watch Time (mins)')"
+								:value="averageWatchTime"
 							/>
 							<div v-if="isPlyrSource">
-								<div class="video-player" :src="currentTab"></div>
+								<div
+									class="video-player"
+									:data-plyr-provider="provider"
+									:src="currentTab"
+								></div>
 							</div>
 							<VideoBlock v-else :file="currentTab" />
 						</div>
@@ -101,6 +102,7 @@ import {
 import { computed, ref, watch } from 'vue'
 import { enablePlyr, formatTimestamp } from '@/utils'
 import VideoBlock from '@/components/VideoBlock.vue'
+import NumberChartGraph from '@/components/NumberChartGraph.vue'
 
 const show = defineModel<boolean | undefined>()
 const currentTab = ref<string>('')
@@ -171,7 +173,7 @@ watch(show, () => {
 
 const statisticsData = computed(() => {
 	const grouped = <Record<string, any[]>>{}
-	statistics.data.forEach((item: { source: string }) => {
+	statistics.data?.forEach((item: { source: string }) => {
 		if (!grouped[item.source]) {
 			grouped[item.source] = []
 		}

@@ -1,24 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { createResource } from 'frappe-ui'
-import { sessionStore } from './session'
 
 export const useSettings = defineStore('settings', () => {
 	const isSettingsOpen = ref(false)
+	const isCommandPaletteOpen = ref(false)
 	const activeTab = ref(null)
 
-	const allowGuestAccess = createResource({
-		url: 'lms.lms.api.get_lms_setting',
-		params: { field: 'allow_guest_access' },
+	const settings = createResource({
+		url: 'lms.lms.api.get_lms_settings',
 		auto: true,
-		cache: ['allowGuestAccess'],
-	})
-
-	const preventSkippingVideos = createResource({
-		url: 'lms.lms.api.get_lms_setting',
-		params: { field: 'prevent_skipping_videos' },
-		auto: true,
-		cache: ['preventSkippingVideos'],
+		cache: 'LMS Settings',
 	})
 
 	const sidebarSettings = createResource({
@@ -27,11 +19,25 @@ export const useSettings = defineStore('settings', () => {
 		auto: false,
 	})
 
+	function loadSidebarSettings(force = false) {
+		if (force) return sidebarSettings.reload()
+		if (sidebarSettings.data) return Promise.resolve(sidebarSettings.data)
+		if (sidebarSettings.loading) return sidebarSettings.promise
+		return sidebarSettings.reload()
+	}
+
+	const programs = createResource({
+		url: 'lms.lms.utils.get_programs',
+		auto: false,
+	})
+
 	return {
-		isSettingsOpen,
 		activeTab,
-		allowGuestAccess,
-		preventSkippingVideos,
+		isSettingsOpen,
+		isCommandPaletteOpen,
+		programs,
+		settings,
 		sidebarSettings,
+		loadSidebarSettings,
 	}
 })

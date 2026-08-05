@@ -1,13 +1,8 @@
 <template>
-	<Dialog
-		v-model="show"
-		:options="{
-			size: '2xl',
-		}"
-	>
-		<template #body-title>
-			<div class="flex items-center justify-between space-x-2 text-base w-full">
-				<div class="text-xl font-semibold text-ink-gray-9">
+	<Dialog v-model:open="show" size="2xl">
+		<template #title>
+			<div class="flex items-center justify-between gap-x-2 text-base w-full">
+				<div class="text-2xl-semibold text-ink-gray-9">
 					{{
 						programName === 'new' ? __('Create Program') : __('Edit Program')
 					}}
@@ -17,7 +12,7 @@
 				</Badge>
 			</div>
 		</template>
-		<template #body-content>
+		<template #default>
 			<div class="text-base">
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-5 pb-5">
 					<FormControl
@@ -45,12 +40,12 @@
 
 				<div class="pb-5">
 					<div class="flex items-center justify-between mt-5 mb-4">
-						<div class="text-lg font-semibold">
+						<div class="text-lg-semibold text-ink-gray-9">
 							{{ __('Courses') }}
 						</div>
 						<Button @click="openForm('course')">
 							<template #prefix>
-								<Plus class="h-4 w-4 stroke-1.5" />
+								<span class="lucide-plus size-4" />
 							</template>
 							<span>
 								{{ __('Add') }}
@@ -58,25 +53,29 @@
 						</Button>
 					</div>
 					<ListView
-						v-if="programCourses.data.length > 0"
+						v-if="program.program_courses?.length > 0"
 						:columns="courseColumns"
-						:rows="programCourses.data"
+						:rows="program.program_courses"
 						:options="{
 							selectable: true,
 							resizeColumn: true,
 							showTooltip: false,
 						}"
-						rowKey="name"
+						:rowKey="'course'"
 					>
 						<ListHeader
-							class="mb-2 grid items-center space-x-4 rounded bg-surface-gray-2 p-2"
+							class="mb-2 grid items-center gap-x-4 rounded bg-surface-gray-2 p-2"
 						>
-							<ListHeaderItem :item="item" v-for="item in courseColumns" />
+							<ListHeaderItem
+								:item="item"
+								v-for="item in courseColumns"
+								:key="item.key"
+							/>
 						</ListHeader>
 						<ListRows>
 							<Draggable
-								:list="programCourses.data"
-								item-key="name"
+								:list="program.program_courses"
+								:item-key="'course'"
 								group="items"
 								@end="updateOrder"
 								class="cursor-move"
@@ -91,9 +90,10 @@
 								<div class="flex gap-2">
 									<Button
 										variant="ghost"
+										:label="__('Delete')"
 										@click="remove(selections, unselectAll, 'courses')"
 									>
-										<Trash2 class="h-4 w-4 stroke-1.5" />
+										<span class="lucide-trash-2 size-4" />
 									</Button>
 								</div>
 							</template>
@@ -106,12 +106,13 @@
 
 				<div>
 					<div class="flex items-center justify-between mt-5 mb-4">
-						<div class="text-lg font-semibold">
+						<div class="text-lg-semibold text-ink-gray-9">
 							{{ __('Members') }}
 						</div>
 
-						<div class="space-x-2">
+						<div class="flex gap-x-2">
 							<Button
+								v-if="programMembers.data.length > 0"
 								@click="
 									() => {
 										showProgressDialog = true
@@ -119,74 +120,57 @@
 								"
 							>
 								<template #prefix>
-									<TrendingUp class="size-4 stroke-1.5" />
+									<span class="lucide-trending-up size-4" />
 								</template>
 								{{ __('Progress Summary') }}
 							</Button>
 							<Button @click="openForm('member')">
 								<template #prefix>
-									<Plus class="h-4 w-4 stroke-1.5" />
+									<span class="lucide-plus size-4" />
 								</template>
 								{{ __('Add') }}
 							</Button>
 						</div>
 					</div>
-					<ListView
-						v-if="programMembers.data.length > 0"
+					<ResponsiveListView
+						v-if="program.program_members?.length > 0"
 						:columns="memberColumns"
-						:rows="programMembers.data"
-						:options="{
-							selectable: true,
-							resizeColumn: true,
-						}"
-						rowKey="name"
+						:rows="program.program_members"
+						row-key="member"
+						:options="{ selectable: true }"
 					>
-						<ListHeader
-							class="mb-2 grid items-center space-x-4 rounded bg-surface-gray-2 p-2"
-						>
-							<ListHeaderItem :item="item" v-for="item in memberColumns" />
-						</ListHeader>
-						<ListRows>
-							<ListRow :row="row" v-for="row in programMembers.data" />
-						</ListRows>
-						<ListSelectBanner>
-							<template #actions="{ unselectAll, selections }">
-								<div class="flex gap-2">
-									<Button
-										variant="ghost"
-										@click="remove(selections, unselectAll, 'members')"
-									>
-										<Trash2 class="h-4 w-4 stroke-1.5" />
-									</Button>
-								</div>
-							</template>
-						</ListSelectBanner>
-					</ListView>
+						<template #selection-actions="{ unselectAll, selections }">
+							<Button
+								variant="ghost"
+								:label="__('Delete')"
+								@click="remove(selections, unselectAll, 'members')"
+							>
+								<span class="lucide-trash-2 size-4" />
+							</Button>
+						</template>
+					</ResponsiveListView>
 					<div v-else class="text-ink-gray-7">
 						{{ __('No members added yet.') }}
 					</div>
 				</div>
 			</div>
 			<Dialog
-				v-model="showFormDialog"
-				:options="{
-					title:
-						currentForm == 'course'
-							? __('Add Course to Program')
-							: __('Enroll Member to Program'),
-					actions: [
-						{
-							label: __('Add'),
-							variant: 'solid',
-							onClick: ({ close }: { close: () => void }) =>
-								currentForm == 'course'
-									? addCourse(close)
-									: addMember(close),
-						},
-					],
-				}"
+				v-model:open="showFormDialog"
+				:title="
+					currentForm == 'course'
+						? __('Add Course to Program')
+						: __('Enroll Member to Program')
+				"
+				:actions="[
+					{
+						label: __('Add'),
+						variant: 'solid',
+						onClick: ({ close }: { close: () => void }) =>
+							currentForm == 'course' ? addCourse(close) : addMember(close),
+					},
+				]"
 			>
-				<template #body-content>
+				<template #default>
 					<div @click.stop>
 						<Link
 							v-if="currentForm == 'course'"
@@ -203,7 +187,10 @@
 								ignore_user_type: 1,
 							}"
 							:label="__('Program Member')"
-							:onCreate="(value: string, close: () => void) => openSettings('Members', close)"
+							:onCreate="
+								(value: string, close: () => void) =>
+									openSettings('Members', close)
+							"
 						/>
 					</div>
 				</template>
@@ -216,16 +203,15 @@
 			/>
 		</template>
 		<template #actions="{ close }">
-			<div class="flex justify-end space-x-2 group">
+			<div class="flex justify-end gap-x-2">
 				<Button
 					v-if="programName != 'new'"
 					@click="deleteProgram(close)"
 					variant="outline"
 					theme="red"
-					class="invisible group-hover:visible"
 				>
 					<template #prefix>
-						<Trash2 class="size-4 stroke-1.5" />
+						<span class="lucide-trash-2 size-4" />
 					</template>
 					{{ __('Delete') }}
 				</Button>
@@ -251,11 +237,12 @@ import {
 	ListRow,
 	toast,
 } from 'frappe-ui'
-import { computed, ref, watch } from 'vue'
-import { Plus, Trash2, TrendingUp } from 'lucide-vue-next'
-import { Programs, Program } from '@/types/programs'
-import { openSettings } from '@/utils'
+import { computed, ref, watch, getCurrentInstance } from 'vue'
+
+import { Programs, Program } from '@/types'
+import { sanitizeHTML, openSettings } from '@/utils'
 import Link from '@/components/Controls/Link.vue'
+import ResponsiveListView from '@/components/ResponsiveListView.vue'
 import Draggable from 'vuedraggable'
 import ProgramProgressSummary from '@/pages/Programs/ProgramProgressSummary.vue'
 
@@ -267,6 +254,9 @@ const course = ref<string>('')
 const member = ref<string>('')
 const showProgressDialog = ref(false)
 const dirty = ref(false)
+
+const app = getCurrentInstance()
+const { $dialog } = app.appContext.config.globalProperties
 
 const props = withDefaults(
 	defineProps<{
@@ -300,7 +290,7 @@ const setProgramData = () => {
 	programs.value?.data.forEach((p: Program) => {
 		if (p.name === props.programName) {
 			isNew = false
-			program.value = { ...p }
+			program.value = { program_courses: [], program_members: [], ...p }
 		}
 	})
 
@@ -361,7 +351,12 @@ const fetchMembers = () => {
 	programMembers.reload()
 }
 
+const validateTitle = () => {
+	program.value.name = sanitizeHTML(program.value.name.trim())
+}
+
 const saveProgram = (close: () => void) => {
+	validateTitle()
 	if (props.programName === 'new') createNewProgram(close)
 	else updateProgram(close)
 	dirty.value = false
@@ -421,25 +416,22 @@ const addCourse = (close: () => void) => {
 		return
 	}
 
-	programCourses.insert.submit(
-		{
-			parent: props.programName,
-			parenttype: 'LMS Program',
-			parentfield: 'program_courses',
-			course: course.value,
-			idx: programCourses.data.length + 1,
-		},
-		{
-			onSuccess() {
-				updateCounts('course', 'add')
-				close()
-				toast.success(__('Course added to program successfully'))
-			},
-			onError(err: any) {
-				toast.warning(__(err.messages?.[0] || err))
-			},
-		}
+	const existingCourse = program.value.program_courses.find(
+		(c: any) => c.course === course.value
 	)
+	if (!existingCourse) {
+		program.value.program_courses.push({
+			course: course.value,
+			idx: program.value.program_courses.length + 1,
+		})
+		if (props.programName !== 'new') {
+			dirty.value = true
+		}
+		close()
+		toast.success(__('Course added to program successfully'))
+	} else {
+		toast.warning(__('Course already added to program'))
+	}
 }
 
 const addMember = (close: () => void) => {
@@ -448,24 +440,21 @@ const addMember = (close: () => void) => {
 		return
 	}
 
-	programMembers.insert.submit(
-		{
-			parent: props.programName,
-			parenttype: 'LMS Program',
-			parentfield: 'program_members',
-			member: member.value,
-		},
-		{
-			onSuccess() {
-				updateCounts('member', 'add')
-				close()
-				toast.success(__('Member added to program successfully'))
-			},
-			onError(err: any) {
-				toast.warning(__(err.messages?.[0] || err))
-			},
-		}
+	const existingMember = program.value.program_members.find(
+		(m) => m.member === member.value
 	)
+	if (!existingMember) {
+		program.value.program_members.push({
+			member: member.value,
+		})
+		if (props.programName !== 'new') {
+			dirty.value = true
+		}
+		close()
+		toast.success(__('Member added to program successfully'))
+	} else {
+		toast.warning(__('Member already added to program'))
+	}
 }
 
 const updateCounts = async (
@@ -503,57 +492,83 @@ const updateCounts = async (
 const updateOrder = async (e: DragEvent) => {
 	let sourceIdx = e.from.dataset.idx
 	let targetIdx = e.to.dataset.idx
-	let courses = programCourses.data
-	courses.splice(targetIdx, 0, courses.splice(sourceIdx, 1)[0])
 
-	for (const [index, course] of courses.entries()) {
-		programCourses.setValue.submit(
-			{
-				name: course.name,
-				idx: index + 1,
-			},
-			{
-				onError(err: any) {
-					toast.warning(__(err.messages?.[0] || err))
+	if (props.programName === 'new') {
+		let courses = program.value.program_courses
+		courses.splice(targetIdx, 0, courses.splice(sourceIdx, 1)[0])
+		courses.forEach((course, index) => {
+			course.idx = index + 1
+		})
+		dirty.value = true
+	} else {
+		let courses = programCourses.data
+		courses.splice(targetIdx, 0, courses.splice(sourceIdx, 1)[0])
+
+		for (const [index, course] of courses.entries()) {
+			programCourses.setValue.submit(
+				{
+					name: course.name,
+					idx: index + 1,
 				},
-			}
-		)
-		await wait(100)
+				{
+					onError(err: any) {
+						toast.warning(__(err.messages?.[0] || err))
+					},
+				}
+			)
+			await wait(100)
+		}
 	}
 }
 
 const wait = (ms: number) => new Promise((res) => setTimeout(res, ms))
 
-const remove = async (
+const remove = (
 	selections: string[],
 	unselectAll: () => void,
 	type: string
 ) => {
-	selections = Array.from(selections)
-	for (const selection of selections) {
-		if (type == 'courses') {
-			await programCourses.delete.submit(selection)
-			await updateCounts('course', 'remove')
-		} else {
-			await programMembers.delete.submit(selection)
-			await updateCounts('member', 'remove')
-		}
-		await programs.value.reload()
-		await wait(100)
+	const selectionsArray = Array.from(selections)
+	if (type === 'courses') {
+		program.value.program_courses = program.value.program_courses.filter(
+			(c: any) => !selectionsArray.includes(c.name || c.course)
+		)
+	} else {
+		program.value.program_members = program.value.program_members.filter(
+			(m: any) => !selectionsArray.includes(m.name || m.member)
+		)
 	}
+	dirty.value = true
 	unselectAll()
 }
 
 const deleteProgram = (close: () => void) => {
 	if (props.programName == 'new') return
-	programs.value?.delete.submit(props.programName, {
-		onSuccess() {
-			toast.success(__('Program deleted successfully'))
-			close()
-		},
-		onError(err: any) {
-			toast.warning(__(err.messages?.[0] || err))
-		},
+	$dialog({
+		title: __('Delete Program'),
+		message: __(
+			'Are you sure you want to delete this program? This action cannot be undone.'
+		),
+		actions: [
+			{
+				label: __('Delete'),
+				theme: 'red',
+				variant: 'solid',
+				onClick(closeDialog) {
+					programs.value?.delete.submit(props.programName, {
+						onSuccess() {
+							toast.success(__('Program deleted successfully'))
+							close()
+							closeDialog()
+						},
+						onError(err: any) {
+							toast.warning(__(err.messages?.[0] || err))
+							closeDialog()
+						},
+					})
+				},
+			},
+		],
 	})
 }
 
@@ -561,7 +576,7 @@ const courseColumns = computed(() => {
 	return [
 		{
 			label: 'Title',
-			key: 'course_title',
+			key: props.programName === 'new' ? 'course' : 'course_title',
 			width: 1,
 		},
 	]

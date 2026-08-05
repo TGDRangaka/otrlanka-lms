@@ -1,31 +1,61 @@
 <template>
 	<div v-if="lesson.data" class="">
-		<header
-			class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
-		>
-			<Breadcrumbs class="h-7" :items="breadcrumbs" />
-			<div class="flex items-center space-x-2">
-				<Tooltip v-if="canGoZen()" :text="__('Zen Mode')">
-					<Button @click="goFullScreen()">
-						<template #icon>
-							<Focus class="w-4 h-4 stroke-2" />
-						</template>
-					</Button>
-				</Tooltip>
-				<Button v-if="canSeeStats()" @click="showVideoStats()">
-					<template #icon>
-						<TrendingUp class="size-4 stroke-1.5" />
-					</template>
-				</Button>
+		<PageHeader :breadcrumbs="breadcrumbs">
+			<template #actions>
 				<CertificationLinks :courseName="courseName" />
+				<router-link
+					v-if="canEditLesson"
+					:to="{
+						name: 'CourseDetail',
+						params: { courseName: courseName },
+						hash: '#course editor',
+						query: { editLesson: `${chapterNumber}-${lessonNumber}` },
+					}"
+				>
+					<HeaderButton :label="__('Editor View')" icon="lucide-pencil" />
+				</router-link>
+			</template>
+		</PageHeader>
+
+		<div
+			v-if="isMobile && lessonTotal"
+			class="flex items-center gap-2 border-b bg-surface-base px-3 py-2"
+		>
+			<Button
+				variant="subtle"
+				class="!size-9"
+				:label="__('Previous lesson')"
+				:disabled="!hasPrev"
+				@click="goPrev()"
+			>
+				<template #icon>
+					<span class="lucide-chevron-left size-4" />
+				</template>
+			</Button>
+			<div
+				class="min-w-0 flex-1 text-center text-p-xs font-medium tabular-nums text-ink-gray-5"
+			>
+				{{ lessonIndex }} / {{ lessonTotal }}
 			</div>
-		</header>
-		<div class="grid md:grid-cols-[70%,30%] h-screen">
-			<div v-if="lesson.data.no_preview" class="border-r">
+			<Button
+				variant="subtle"
+				class="!size-9"
+				:label="__('Next lesson')"
+				:disabled="!hasNext"
+				@click="goNext()"
+			>
+				<template #icon>
+					<span class="lucide-chevron-right size-4" />
+				</template>
+			</Button>
+		</div>
+
+		<div class="grid md:grid-cols-[70%,30%] sm:h-[94vh]">
+			<div v-if="lesson.data.no_preview" class="sm:border-e">
 				<div class="shadow rounded-md w-3/4 mt-10 mx-auto text-center p-4">
-					<div class="flex items-center justify-center mt-4 space-x-2">
-						<LockKeyholeIcon class="size-4 stroke-2 text-ink-gray-5" />
-						<div class="text-lg font-semibold text-ink-gray-7">
+					<div class="flex items-center justify-center mt-4 gap-x-2">
+						<span class="lucide-lock-keyhole size-4 text-ink-gray-5" />
+						<div class="text-lg-semibold text-ink-gray-7">
 							{{ __('This lesson is locked') }}
 						</div>
 					</div>
@@ -53,7 +83,7 @@
 					</Badge>
 					<Button v-else @click="redirectToLogin()">
 						<template #prefix>
-							<LogIn class="w-4 h-4 stroke-1" />
+							<span class="lucide-log-in size-4" />
 						</template>
 						{{ __('Login') }}
 					</Button>
@@ -62,13 +92,13 @@
 			<div
 				v-else
 				ref="lessonContainer"
-				class="bg-surface-white"
+				class="bg-surface-base min-w-0"
 				:class="{
 					'overflow-y-auto': zenModeEnabled,
 				}"
 			>
 				<div
-					class="border-r pt-5 pb-10 h-full"
+					class="sm:border-e pt-5 pb-10 h-full"
 					:class="{
 						'w-full md:w-3/5 mx-auto border-none !pt-10': zenModeEnabled,
 					}"
@@ -78,21 +108,21 @@
 							class="flex flex-col space-y-3 md:space-y-0 md:flex-row md:items-center justify-between"
 						>
 							<div class="flex flex-col">
-								<div class="text-3xl font-semibold text-ink-gray-9">
+								<h1 class="text-4xl-semibold text-ink-gray-9">
 									{{ lesson.data.title }}
-								</div>
+								</h1>
 
 								<div
 									v-if="zenModeEnabled"
-									class="relative flex items-center space-x-2 text-sm mt-1 text-ink-gray-7 group w-fit mt-2"
+									class="relative flex items-center gap-x-2 text-sm text-ink-gray-7 group w-fit mt-2"
 								>
 									<span>
 										{{ lesson.data.chapter_title }} -
 										{{ lesson.data.course_title }}
 									</span>
-									<Info class="size-3" />
+									<span class="lucide-info size-3" />
 									<div
-										class="hidden group-hover:block rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-xl absolute left-0 top-full mt-2"
+										class="hidden group-hover:block rounded bg-surface-gray-10 px-2 py-1 text-xs text-ink-base shadow-xl absolute start-0 top-full mt-2"
 									>
 										{{ Math.ceil(lesson.data.membership.progress) }}%
 										{{ __('completed') }}
@@ -100,43 +130,66 @@
 								</div>
 							</div>
 
-							<div class="flex items-center space-x-2 mt-2 md:mt-0">
+							<div
+								v-if="!zenModeEnabled && !isMobile"
+								class="flex items-center gap-x-2 mt-2 md:mt-0"
+							>
+								<Tooltip v-if="canGoZen()" :text="__('Zen Mode')">
+									<Button @click="goFullScreen()" :label="__('Zen Mode')">
+										<template #icon>
+											<span class="lucide-focus size-4" />
+										</template>
+									</Button>
+								</Tooltip>
+								<Button v-if="lesson.data.prev" @click="switchLesson('prev')">
+									<template #prefix>
+										<span class="lucide-chevron-left size-4" />
+									</template>
+									<span>{{ __('Previous') }}</span>
+								</Button>
+								<Button v-if="lesson.data.next" @click="switchLesson('next')">
+									<template #suffix>
+										<span class="lucide-chevron-right size-4" />
+									</template>
+									<span>{{ __('Next') }}</span>
+								</Button>
+								<router-link
+									v-else
+									:to="{
+										name: 'CourseDetail',
+										params: { courseName: courseName },
+									}"
+								>
+									<Button class="text-p-base-medium">{{
+										__('Back to Course')
+									}}</Button>
+								</router-link>
+							</div>
+
+							<div
+								v-if="zenModeEnabled"
+								class="flex items-center gap-x-2 mt-2 md:mt-0"
+							>
 								<Button
-									v-if="zenModeEnabled"
 									@click="showDiscussionsInZenMode()"
+									:label="__('Toggle discussions')"
 								>
 									<template #icon>
-										<MessageCircleQuestion class="w-4 h-4 stroke-1.5" />
+										<span class="lucide-message-circle-question size-4" />
 									</template>
 								</Button>
 								<Button v-if="lesson.data.prev" @click="switchLesson('prev')">
 									<template #prefix>
-										<ChevronLeft class="w-4 h-4 stroke-1" />
+										<span class="lucide-chevron-left size-4" />
 									</template>
 									<span>
 										{{ __('Previous') }}
 									</span>
 								</Button>
 
-								<router-link
-									v-if="allowEdit()"
-									:to="{
-										name: 'LessonForm',
-										params: {
-											courseName: courseName,
-											chapterNumber: props.chapterNumber,
-											lessonNumber: props.lessonNumber,
-										},
-									}"
-								>
-									<Button>
-										{{ __('Edit') }}
-									</Button>
-								</router-link>
-
 								<Button v-if="lesson.data.next" @click="switchLesson('next')">
 									<template #suffix>
-										<ChevronRight class="w-4 h-4 stroke-1" />
+										<span class="lucide-chevron-right size-4" />
 									</template>
 									<span>
 										{{ __('Next') }}
@@ -150,7 +203,7 @@
 										params: { courseName: courseName },
 									}"
 								>
-									<Button>
+									<Button class="text-p-base-medium">
 										{{ __('Back to Course') }}
 									</Button>
 								</router-link>
@@ -159,13 +212,14 @@
 
 						<div v-if="!zenModeEnabled" class="flex items-center mt-4 md:mt-2">
 							<span
-								class="h-6 mr-1"
+								class="h-6 me-1"
 								:class="{
 									'avatar-group overlap': lesson.data.instructors?.length > 1,
 								}"
 							>
 								<UserAvatar
 									v-for="instructor in lesson.data.instructors"
+									:key="instructor.name ?? instructor"
 									:user="instructor"
 								/>
 							</span>
@@ -184,9 +238,9 @@
 							"
 							class="bg-surface-gray-2 p-3 rounded-md mt-6"
 						>
-							<div class="text-ink-gray-5 font-medium">
+							<h2 class="text-ink-gray-5 font-medium">
 								{{ __('Instructor Notes') }}
-							</div>
+							</h2>
 							<div
 								id="instructor-content"
 								class="ProseMirror prose prose-table:table-fixed prose-td:p-2 prose-th:p-2 prose-td:border prose-th:border prose-td:border-outline-gray-2 prose-th:border-outline-gray-2 prose-td:relative prose-th:relative prose-th:bg-surface-gray-2 prose-sm max-w-none !whitespace-normal"
@@ -218,13 +272,13 @@
 						</div>
 					</div>
 					<div
-						v-if="lesson.data"
+						v-if="lesson.data && (allowDiscussions || tabs.length > 1)"
 						class="mt-10 pb-20 pt-5 border-t px-5"
 						ref="discussionsContainer"
 					>
 						<TabButtons
 							v-if="tabs.length > 1"
-							:buttons="tabs"
+							:options="tabs"
 							v-model="currentTab"
 							class="w-fit mb-10"
 						/>
@@ -247,49 +301,60 @@
 					</div>
 				</div>
 			</div>
-			<div class="sticky top-10">
-				<div class="bg-surface-menu-bar py-5 px-2 border-b">
-					<div class="text-lg font-semibold text-ink-gray-9">
-						{{ lesson.data.course_title }}
-					</div>
-					<div
-						v-if="user && lesson.data.membership"
-						class="text-sm mt-4 mb-2 text-ink-gray-5"
-					>
-						{{ Math.ceil(lessonProgress) }}% {{ __('completed') }}
-					</div>
-
-					<ProgressBar
-						v-if="user && lesson.data.membership"
-						:progress="lessonProgress"
-					/>
-				</div>
-				<CourseOutline
+			<aside v-if="!isMobile" class="sticky top-10 h-[94vh]">
+				<StudentLessonSidebar
 					:courseName="courseName"
-					:key="chapterNumber"
-					:getProgress="lesson.data.membership ? true : false"
-					:lessonProgress="lessonProgress"
+					:courseTitle="lesson.data.course_title"
+					:progress="lessonProgress"
+					:selectedLessonNumber="`${chapterNumber}-${lessonNumber}`"
+					:completedLesson="completedLesson"
 				/>
-			</div>
+			</aside>
 		</div>
+
+		<div
+			v-if="isMobile"
+			class="pointer-events-none sticky bottom-4 z-10 flex justify-end px-4"
+		>
+			<Button
+				variant="outline"
+				class="pointer-events-auto !h-11 !rounded-full !px-4 !shadow-lg"
+				@click="showChapters = true"
+			>
+				<template #prefix>
+					<span class="lucide-layers size-4" />
+				</template>
+				{{ __('Chapters') }}
+			</Button>
+		</div>
+
+		<BottomSheet v-if="isMobile" v-model="showChapters">
+			<template #header>
+				<div class="min-w-0 truncate text-p-lg-semibold text-ink-gray-9">
+					{{ lesson.data.course_title }}
+				</div>
+			</template>
+			<StudentLessonSidebar
+				:courseName="courseName"
+				:progress="lessonProgress"
+				:selectedLessonNumber="`${chapterNumber}-${lessonNumber}`"
+				:completedLesson="completedLesson"
+				:hideHeader="true"
+				@select-lesson="showChapters = false"
+			/>
+		</BottomSheet>
 	</div>
 	<InlineLessonMenu
-		v-if="lesson.data"
+		v-if="lesson.data?.name"
 		v-model="showInlineMenu"
 		:lesson="lesson.data?.name"
 		v-model:notes="notes"
 		@updateNotes="updateNotes"
 	/>
-	<VideoStatistics
-		v-model="showStatsDialog"
-		:lessonName="lesson.data?.name"
-		:lessonTitle="lesson.data?.title"
-	/>
 </template>
 <script setup>
 import {
 	Badge,
-	Breadcrumbs,
 	Button,
 	call,
 	createListResource,
@@ -297,6 +362,7 @@ import {
 	TabButtons,
 	Tooltip,
 	usePageMeta,
+	toast,
 } from 'frappe-ui'
 import {
 	computed,
@@ -309,41 +375,57 @@ import {
 } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
-	ChevronLeft,
-	ChevronRight,
-	LockKeyholeIcon,
-	LogIn,
-	Focus,
-	Info,
-	MessageCircleQuestion,
-	TrendingUp,
-} from 'lucide-vue-next'
-import { getEditorTools, enablePlyr, highlightText } from '@/utils'
+	getEditorTools,
+	enablePlyr,
+	highlightText,
+	sanitizeEditorJs,
+} from '@/utils'
 import { sessionStore } from '@/stores/session'
 import { useSidebar } from '@/stores/sidebar'
+import { useSettings } from '@/stores/settings'
+import { useScreenSize } from '@/utils/composables'
+import {
+	resolveDwellSeconds,
+	isVideoComplete,
+	shouldStartDwellTimer,
+	shouldAttachVideoFallback,
+} from '@/utils/lessonProgress'
 import EditorJS from '@editorjs/editorjs'
 import LessonContent from '@/components/LessonContent.vue'
 import CourseInstructors from '@/components/CourseInstructors.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import Discussions from '@/components/Discussions.vue'
 import CertificationLinks from '@/components/CertificationLinks.vue'
-import VideoStatistics from '@/components/Modals/VideoStatistics.vue'
 import CourseOutline from '@/components/CourseOutline.vue'
+import StudentLessonSidebar from '@/components/StudentLessonSidebar.vue'
+import BottomSheet from '@/components/BottomSheet.vue'
+import PageHeader from '@/components/Layouts/PageHeader.vue'
+import HeaderButton from '@/components/HeaderButton.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import Notes from '@/components/Notes/Notes.vue'
 import InlineLessonMenu from '@/components/Notes/InlineLessonMenu.vue'
+import { getLmsRoute } from '@/utils/basePath'
+import { provideStudentView } from '@/composables/useStudentView'
 
-const user = inject('$user')
-const socket = inject('$socket')
 const router = useRouter()
 const route = useRoute()
+const realUser = inject('$user')
+// A component's own provide() is invisible to its own inject(), so read the
+// handles provideStudentView returns rather than calling useStudentView().
+const { isStudentView, mockedUser } = provideStudentView(
+	realUser,
+	() => route.query.studentView === '1'
+)
+// Shadows every user.data read below and in every child, so the page renders
+// exactly what a student sees.
+const user = mockedUser
+const socket = inject('$socket')
 const allowDiscussions = ref(false)
 const editor = ref(null)
 const instructorEditor = ref(null)
 const lessonProgress = ref(0)
 const lessonContainer = ref(null)
 const zenModeEnabled = ref(false)
-const showStatsDialog = ref(false)
 const hasQuiz = ref(false)
 const discussionsContainer = ref(null)
 const timer = ref(0)
@@ -351,15 +433,14 @@ const { brand } = sessionStore()
 const sidebarStore = useSidebar()
 const plyrSources = ref([])
 const showInlineMenu = ref(false)
-const currentTab = ref('Notes')
-let timerInterval
+const currentTab = ref(null)
+const completedLesson = ref(null)
+const settingsStore = useSettings()
+const { isMobile } = useScreenSize()
+const showChapters = ref(false)
+let timerInterval = null
 
-const tabs = ref([
-	{
-		label: __('Notes'),
-		value: 'Notes',
-	},
-])
+const tabs = ref([])
 
 const props = defineProps({
 	courseName: {
@@ -376,8 +457,18 @@ const props = defineProps({
 	},
 })
 
+let collapsedByLesson = false
+const isCourseAdmin = () =>
+	Boolean(user.data?.is_moderator || user.data?.is_instructor)
+
 onMounted(() => {
-	sidebarStore.isSidebarCollapsed = true
+	startTimer()
+	// Keep the app sidebar open for admins/instructors so they can navigate
+	// while reviewing; only collapse it for students to maximise reading space.
+	if (!isCourseAdmin()) {
+		sidebarStore.isSidebarCollapsed = true
+		collapsedByLesson = true
+	}
 	document.addEventListener('fullscreenchange', attachFullscreenEvent)
 	socket.on('update_lesson_progress', (data) => {
 		if (data.course === props.courseName) {
@@ -400,7 +491,7 @@ const attachFullscreenEvent = () => {
 
 onBeforeUnmount(() => {
 	document.removeEventListener('fullscreenchange', attachFullscreenEvent)
-	sidebarStore.isSidebarCollapsed = false
+	if (collapsedByLesson) sidebarStore.isSidebarCollapsed = false
 	trackVideoWatchDuration()
 })
 
@@ -466,17 +557,55 @@ const renderEditor = (holder, content) => {
 		document.getElementById(holder).innerHTML = ''
 	return new EditorJS({
 		holder: holder,
-		tools: getEditorTools(),
-		data: JSON.parse(content),
+		tools: getEditorTools(false, {}, { studentView: isStudentView.value }),
+		data: sanitizeEditorJs(JSON.parse(content)),
 		readOnly: true,
 		defaultBlock: 'embed',
+		i18n: {
+			direction: document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr',
+		},
+		onReady() {
+			const root = document.getElementById(holder)
+			if (!root) return
+			root.querySelectorAll('a').forEach((a) => {
+				a.setAttribute('target', '_blank')
+				a.setAttribute('rel', 'noopener noreferrer')
+			})
+		},
 	})
 }
 
+// Video-ended fires markProgress + trackVideoWatchDuration in parallel,
+// and trackVideoWatchDuration's getPlyrSourceDetails calls markProgress
+// again. Without an in-flight guard the two save_progress requests race
+// and the second one fails with TimestampMismatchError on LMS Enrollment.
+let progressSubmitting = false
 const markProgress = () => {
-	if (user.data && lesson.data && !lesson.data.progress) {
-		progress.submit()
-	}
+	if (progressSubmitting) return
+	// Only enrolled students record progress; a moderator previewing has no
+	// membership row so save_progress would no-op server-side but still
+	// flip the in-memory `completedLesson` and show a green tick that
+	// vanishes on refresh.
+	if (
+		!user.data ||
+		!lesson.data ||
+		!lesson.data.membership ||
+		lesson.data.progress
+	)
+		return
+	progressSubmitting = true
+	progress.submit(
+		{},
+		{
+			onSuccess() {
+				progressSubmitting = false
+			},
+			onError(err) {
+				progressSubmitting = false
+				console.error(err)
+			},
+		}
+	)
 }
 
 const progress = createResource({
@@ -489,6 +618,7 @@ const progress = createResource({
 	},
 	onSuccess(data) {
 		lessonProgress.value = data
+		completedLesson.value = lesson.data?.name
 	},
 })
 
@@ -510,12 +640,12 @@ const notes = createListResource({
 })
 
 const breadcrumbs = computed(() => {
-	let items = [{ label: 'Courses', route: { name: 'Courses' } }]
-	items.push({
+	let crumbs = [{ label: __('Courses'), route: { name: 'Courses' } }]
+	crumbs.push({
 		label: lesson?.data?.course_title,
 		route: { name: 'CourseDetail', params: { courseName: props.courseName } },
 	})
-	items.push({
+	crumbs.push({
 		label: lesson?.data?.title,
 		route: {
 			name: 'Lesson',
@@ -524,25 +654,85 @@ const breadcrumbs = computed(() => {
 				chapterNumber: props.chapterNumber,
 				lessonNumber: props.lessonNumber,
 			},
+			query: studentViewQuery.value,
 		},
 	})
-	return items
+	return crumbs
 })
 
-const switchLesson = (direction) => {
-	trackVideoWatchDuration()
-	let lessonIndex =
-		direction === 'prev'
-			? lesson.data.prev.split('.')
-			: lesson.data.next.split('.')
+const outline = createResource({
+	url: 'lms.lms.utils.get_course_outline',
+	cache: ['course_outline_student', props.courseName, 'progress'],
+	makeParams() {
+		return {
+			course: props.courseName,
+			progress: true,
+		}
+	},
+	auto: false,
+})
+outline.fetch()
 
+watch(
+	() => props.courseName,
+	() => outline.reload()
+)
+
+const lessonNumbers = computed(() =>
+	(outline.data ?? []).flatMap((c) => c.lessons?.map((l) => l.number) ?? [])
+)
+const currentIndex = computed(() =>
+	lessonNumbers.value.indexOf(`${props.chapterNumber}-${props.lessonNumber}`)
+)
+const lessonTotal = computed(() => lessonNumbers.value.length)
+const lessonIndex = computed(() =>
+	currentIndex.value >= 0 ? currentIndex.value + 1 : 0
+)
+const hasPrev = computed(() => currentIndex.value > 0)
+const hasNext = computed(
+	() => currentIndex.value >= 0 && currentIndex.value < lessonTotal.value - 1
+)
+
+const goToLessonNumber = (number) => {
+	trackVideoWatchDuration()
+	const [chapterNumber, lessonNumber] = number.split('-')
 	router.push({
 		name: 'Lesson',
 		params: {
 			courseName: props.courseName,
-			chapterNumber: lessonIndex[0],
-			lessonNumber: lessonIndex[1],
+			chapterNumber,
+			lessonNumber,
 		},
+		query: studentViewQuery.value,
+	})
+}
+
+const goPrev = () => {
+	if (hasPrev.value)
+		goToLessonNumber(lessonNumbers.value[currentIndex.value - 1])
+}
+
+const goNext = () => {
+	if (hasNext.value)
+		goToLessonNumber(lessonNumbers.value[currentIndex.value + 1])
+}
+
+const switchLesson = (direction) => {
+	trackVideoWatchDuration()
+	let target =
+		direction === 'prev'
+			? lesson.data.prev.split('.')
+			: lesson.data.next.split('.')
+
+	const [chapterNumber, lessonNumber] = target
+	router.push({
+		name: 'Lesson',
+		params: {
+			courseName: props.courseName,
+			chapterNumber,
+			lessonNumber,
+		},
+		query: studentViewQuery.value,
 	})
 }
 
@@ -571,12 +761,14 @@ const resetLessonState = (newChapterNumber, newLessonNumber) => {
 		chapter: newChapterNumber,
 		lesson: newLessonNumber,
 	})
+	videoFallbackArmed = false
+	fallbackGeneration++
 	clearInterval(timerInterval)
 	timer.value = 0
 }
 
 const trackVideoWatchDuration = () => {
-	if (!lesson.data.membership) return
+	if (!lesson.data?.membership) return
 	let videoDetails = getVideoDetails()
 	videoDetails = videoDetails.concat(getPlyrSourceDetails())
 	call('lms.lms.api.track_video_watch_duration', {
@@ -590,7 +782,7 @@ const getVideoDetails = () => {
 	const videos = document.querySelectorAll('video')
 	if (videos.length > 0) {
 		videos.forEach((video) => {
-			if (video.duration > 0 && video.currentTime >= video.duration - 0.5) markProgress()
+			if (isVideoComplete(video.currentTime, video.duration)) markProgress()
 			details.push({
 				source: video.src,
 				watch_time: video.currentTime,
@@ -603,7 +795,7 @@ const getVideoDetails = () => {
 const getPlyrSourceDetails = () => {
 	let details = []
 	plyrSources.value.forEach((source) => {
-		if (source.duration > 0 && source.currentTime >= source.duration - 0.5) markProgress()
+		if (isVideoComplete(source.currentTime, source.duration)) markProgress()
 		let src = cleanYouTubeUrl(source.source)
 		details.push({
 			source: src,
@@ -620,62 +812,51 @@ const cleanYouTubeUrl = (url) => {
 	return urlObj.toString()
 }
 
-const isVideoLesson = (data) => {
-	if (!data) return false
-	if (data.icon === 'icon-youtube') return true
-	if (data.videos && data.videos.length > 0) return true
-	if (plyrSources.value && plyrSources.value.length > 0) return true
-	if (document.querySelectorAll('video, .video-player').length > 0) return true
-	return false
-}
-
-const attachVideoCompletionListeners = () => {
-	if (plyrSources.value && plyrSources.value.length > 0) {
-		plyrSources.value.forEach((player) => {
-			if (!player._hasCompletionListener) {
-				player._hasCompletionListener = true
-				player.on('ended', () => markProgress())
-				player.on('timeupdate', () => {
-					if (player.duration > 0 && player.currentTime >= player.duration - 0.5) {
-						markProgress()
-					}
-				})
-			}
-		})
-	}
-
-	const videos = document.querySelectorAll('video')
-	if (videos.length > 0) {
-		videos.forEach((vid) => {
-			if (!vid._hasCompletionListener) {
-				vid._hasCompletionListener = true
-				vid.addEventListener('ended', () => markProgress())
-				vid.addEventListener('timeupdate', () => {
-					if (vid.duration > 0 && vid.currentTime >= vid.duration - 0.5) {
-						markProgress()
-					}
-				})
-			}
-		})
-	}
-}
-
 watch(
 	() => lesson.data,
 	async (data) => {
-		if (!data) return
 		setupLesson(data)
+		// Settings drive dwell + enforcement; if they haven't resolved yet
+		// the timer reads undefined and falls back to 30s. Await the
+		// resource so the admin-configured dwell time wins from the first
+		// lesson load.
+		if (settingsStore.settings?.promise) {
+			try {
+				await settingsStore.settings.promise
+			} catch {}
+		}
+		startTimer()
 		await getPlyrSource()
 		updateNotes()
-		attachVideoCompletionListeners()
-		if (isVideoLesson(data)) {
-			if (timerInterval) {
-				clearInterval(timerInterval)
-				timerInterval = null
-			}
-			timer.value = 0
-		} else {
-			startTimer()
+		const hasVideoListener =
+			plyrSources.value.length > 0 || !!document.querySelector('video')
+		const enforceVideo = Number(
+			settingsStore.settings?.data?.enforce_video_completion ?? 0
+		)
+		// When the lesson has video AND enforcement is on, suppress dwell so
+		// completion is gated on play-to-end. When enforcement is off, dwell
+		// runs for every lesson type (including YouTube/Plyr), so admins can
+		// set a short dwell to mark video lessons complete without a full
+		// playthrough.
+		if (!shouldStartDwellTimer({ hasVideo: hasVideoListener, enforceVideo })) {
+			clearInterval(timerInterval)
+		}
+		if (
+			shouldAttachVideoFallback({ hasVideo: hasVideoListener, enforceVideo })
+		) {
+			document.querySelectorAll('video').forEach((video) => {
+				if (video._lmsErrorAttached) return
+				video._lmsErrorAttached = true
+				const gen = fallbackGeneration
+				video.addEventListener(
+					'error',
+					() => {
+						if (gen !== fallbackGeneration) return
+						fallbackToDwellTimer('html5-video-error')
+					},
+					{ once: true }
+				)
+			})
 		}
 	}
 )
@@ -684,12 +865,40 @@ const getPlyrSource = async () => {
 	await nextTick()
 	if (plyrSources.value.length == 0) {
 		plyrSources.value = await enablePlyr()
+		const enforceVideo = Number(
+			settingsStore.settings?.data?.enforce_video_completion ?? 0
+		)
+		if (
+			shouldAttachVideoFallback({
+				hasVideo: plyrSources.value.length > 0,
+				enforceVideo,
+			})
+		) {
+			plyrSources.value.forEach((player) => {
+				let readyFired = false
+				const gen = fallbackGeneration
+				player.on('ready', () => {
+					readyFired = true
+				})
+				player.on('error', (event) => {
+					if (gen !== fallbackGeneration) return
+					fallbackToDwellTimer(
+						'plyr-error: ' + (event?.detail?.message || 'unknown')
+					)
+				})
+				setTimeout(() => {
+					if (!readyFired && gen === fallbackGeneration) {
+						fallbackToDwellTimer('plyr-no-ready-15s')
+					}
+				}, 15000)
+			})
+		}
 	}
 	updateVideoWatchDuration()
 }
 
 const updateVideoWatchDuration = () => {
-	if (lesson.data?.videos && lesson.data.videos.length > 0) {
+	if (lesson.data.videos && lesson.data.videos.length > 0) {
 		lesson.data.videos.forEach((video) => {
 			if (video.source.includes('youtube') || video.source.includes('vimeo')) {
 				updatePlyrVideoTime(video)
@@ -698,10 +907,38 @@ const updateVideoWatchDuration = () => {
 			}
 		})
 	}
+	attachVideoEndedListeners()
+}
+
+const attachVideoEndedListeners = () => {
+	const onVideoEnded = () => {
+		markProgress()
+		trackVideoWatchDuration()
+	}
+
+	document.querySelectorAll('video').forEach((video) => {
+		if (!video._lmsEndedAttached) {
+			video.addEventListener('ended', onVideoEnded)
+			video._lmsEndedAttached = true
+		}
+	})
+
+	plyrSources.value.forEach((plyrSource) => {
+		if (!plyrSource._lmsEndedAttached) {
+			plyrSource.on('ended', onVideoEnded)
+			plyrSource.on('statechange', (event) => {
+				if (event.detail?.code === 0) onVideoEnded()
+			})
+			plyrSource._lmsEndedAttached = true
+		}
+	})
 }
 
 const updatePlyrVideoTime = (video) => {
 	plyrSources.value.forEach((plyrSource) => {
+		let lastWatchedTime = 0
+		let isSeeking = false
+
 		plyrSource.on('ready', () => {
 			if (plyrSource.source === video.source) {
 				plyrSource.embed.seekTo(video.watch_time, true)
@@ -730,31 +967,36 @@ const updateVideoTime = (video) => {
 	}
 }
 
-const startTimer = () => {
-	if (timerInterval) {
-		clearInterval(timerInterval)
-		timerInterval = null
-	}
+let videoFallbackArmed = false
+let fallbackGeneration = 0
+const fallbackToDwellTimer = (reason) => {
+	// The dwell fallback only matters for an enrolled student tracking progress.
+	// Don't surface the "mark as viewed" toast in student view or to
+	// non-enrolled viewers (admins/instructors reviewing the lesson).
+	if (isStudentView.value || !lesson.data?.membership) return
+	if (videoFallbackArmed) return
+	videoFallbackArmed = true
+	console.warn('[Lesson] video fallback engaged:', reason)
+	toast.warning(
+		__(
+			'Video failed to load. This lesson will still be marked complete after you spend some time on it.'
+		)
+	)
+	clearInterval(timerInterval)
 	timer.value = 0
+	startTimer()
+}
 
-	if (isVideoLesson(lesson.data)) {
-		return
-	}
-
+const startTimer = () => {
+	if (!lesson.data?.membership) return
+	const dwell = resolveDwellSeconds(
+		settingsStore.settings?.data?.lesson_dwell_time
+	)
+	if (dwell === null) return
 	timerInterval = setInterval(() => {
-		if (isVideoLesson(lesson.data)) {
-			if (timerInterval) {
-				clearInterval(timerInterval)
-				timerInterval = null
-			}
-			return
-		}
 		timer.value++
-		if (timer.value >= 30) {
-			if (timerInterval) {
-				clearInterval(timerInterval)
-				timerInterval = null
-			}
+		if (timer.value >= dwell) {
+			clearInterval(timerInterval)
 			markProgress()
 		}
 	}, 1000)
@@ -766,11 +1008,17 @@ onBeforeUnmount(() => {
 
 const checkIfDiscussionsAllowed = () => {
 	hasQuiz.value = false
-	JSON.parse(lesson.data?.content)?.blocks?.forEach((block) => {
-		if (block.type === 'quiz') {
-			hasQuiz.value = true
+	if (lesson.data?.content) {
+		try {
+			JSON.parse(lesson.data.content)?.blocks?.forEach((block) => {
+				if (block.type === 'quiz') {
+					hasQuiz.value = true
+				}
+			})
+		} catch {
+			// legacy markdown lessons
 		}
-	})
+	}
 
 	if (
 		!hasQuiz.value &&
@@ -785,17 +1033,28 @@ const checkIfDiscussionsAllowed = () => {
 	}
 }
 
-const allowEdit = () => {
-	if (window.read_only_mode) return false
-	if (user.data?.is_moderator) return true
-	if (lesson.data?.instructors?.includes(user.data?.name)) return true
-	return false
-}
+const isAdmin = computed(() => {
+	let isInstructor = lesson.data?.instructors?.includes(user.data?.name)
+	return user.data?.is_moderator || isInstructor
+})
+
+// Student view is a mode, not a destination: every hop that stays on a lesson
+// has to carry the flag, or Prev / Next / the sidebar silently drops the
+// moderator back into their own identity mid-course.
+const studentViewQuery = computed(() =>
+	isStudentView.value ? { studentView: 1 } : undefined
+)
+
+// Reads the real user, not the student-view shadow, so the way back to the
+// editor survives ?studentView=1.
+const canEditLesson = computed(() => {
+	const isInstructor = lesson.data?.instructors?.includes(realUser.data?.name)
+	return realUser.data?.is_moderator || isInstructor
+})
 
 const allowInstructorContent = () => {
-	if (user.data?.is_moderator) return true
-	if (lesson.data?.instructors?.includes(user.data?.name)) return true
-	return false
+	if (window.read_only_mode) return false
+	return isAdmin.value
 }
 
 const enrollment = createResource({
@@ -818,6 +1077,10 @@ const enrollStudent = () => {
 			onSuccess() {
 				window.location.reload()
 			},
+			onError(err) {
+				toast.error(__(err.messages?.[0] || err))
+				console.error(err)
+			},
 		}
 	)
 }
@@ -829,15 +1092,6 @@ const toggleInlineMenu = async () => {
 	if (selection.toString()) {
 		showInlineMenu.value = true
 	}
-}
-
-const canSeeStats = () => {
-	if (user.data?.is_moderator || user.data?.is_instructor) return true
-	return false
-}
-
-const showVideoStats = () => {
-	showStatsDialog.value = true
 }
 
 const canGoZen = () => {
@@ -884,6 +1138,7 @@ const scrollDiscussionsIntoView = () => {
 }
 
 const updateNotes = () => {
+	if (!user.data) return
 	notes.update({
 		filters: {
 			lesson: lesson.data?.name,
@@ -894,29 +1149,31 @@ const updateNotes = () => {
 }
 
 watch(allowDiscussions, () => {
-	if (allowDiscussions.value) {
-		tabs.value = [
-			{
+	if (!isAdmin.value) {
+		if (!tabs.value.find((tab) => tab.value === 'Notes')) {
+			tabs.value.push({
 				label: __('Notes'),
 				value: 'Notes',
-			},
-			{
+			})
+		}
+		currentTab.value = 'Notes'
+	} else {
+		currentTab.value = allowDiscussions.value ? 'Community' : null
+	}
+	if (allowDiscussions.value) {
+		if (!tabs.value.find((tab) => tab.value === 'Community')) {
+			tabs.value.push({
 				label: __('Community'),
 				value: 'Community',
-			},
-		]
-	} else {
-		tabs.value = [
-			{
-				label: __('Notes'),
-				value: 'Notes',
-			},
-		]
+			})
+		}
 	}
 })
 
 const redirectToLogin = () => {
-	window.location.href = `/login?redirect-to=/lms/courses/${props.courseName}`
+	window.location.href = `/login?redirect-to=${getLmsRoute(
+		`courses/${props.courseName}`
+	)}`
 }
 
 usePageMeta(() => {
@@ -1020,8 +1277,8 @@ usePageMeta(() => {
 	border-radius: 0 0 20px 2px;
 	padding: 2px 26px;
 	padding-top: 0;
-	padding-right: 0;
-	text-align: left;
+	padding-inline-end: 0;
+	text-align: start;
 	cursor: pointer;
 	border: none !important;
 	outline: none !important;
@@ -1029,7 +1286,7 @@ usePageMeta(() => {
 
 .codeBoxSelectDropIcon {
 	position: absolute !important;
-	left: 10px !important;
+	inset-inline-start: 10px !important;
 	bottom: 0 !important;
 	width: unset !important;
 	height: unset !important;
@@ -1086,7 +1343,7 @@ usePageMeta(() => {
 }
 
 .tc-table {
-	border-left: 1px solid #e8e8eb;
+	border-inline-start: 1px solid #e8e8eb;
 }
 
 .plyr__volume input[type='range'] {

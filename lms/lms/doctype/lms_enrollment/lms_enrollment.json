@@ -10,6 +10,7 @@
   "progress",
   "payment",
   "current_lesson",
+  "enrollment_from_batch",
   "column_break_3",
   "member",
   "member_name",
@@ -19,20 +20,11 @@
   "purchased_certificate",
   "certificate",
   "section_break_8",
-  "cohort",
-  "subgroup",
-  "batch_old",
   "column_break_12",
   "member_type",
   "role"
  ],
  "fields": [
-  {
-   "fieldname": "batch_old",
-   "fieldtype": "Link",
-   "label": "Batch Old",
-   "options": "LMS Batch Old"
-  },
   {
    "fieldname": "member",
    "fieldtype": "Link",
@@ -102,18 +94,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "cohort",
-   "fieldtype": "Link",
-   "label": "Cohort",
-   "options": "Cohort"
-  },
-  {
-   "fieldname": "subgroup",
-   "fieldtype": "Link",
-   "label": "Subgroup",
-   "options": "Cohort Subgroup"
-  },
-  {
    "fieldname": "column_break_12",
    "fieldtype": "Column Break"
   },
@@ -150,13 +130,19 @@
    "fieldname": "member_image",
    "fieldtype": "Attach Image",
    "label": "Member Image"
+  },
+  {
+   "fieldname": "enrollment_from_batch",
+   "fieldtype": "Link",
+   "label": "Enrollment from Batch",
+   "options": "LMS Batch"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-07-02 21:27:30.733482",
- "modified_by": "Administrator",
+ "modified": "2026-01-28 18:07:58.529033",
+ "modified_by": "sayali@frappe.io",
  "module": "LMS",
  "name": "LMS Enrollment",
  "owner": "Administrator",
@@ -177,6 +163,7 @@
    "create": 1,
    "email": 1,
    "export": 1,
+   "if_owner": 1,
    "print": 1,
    "read": 1,
    "report": 1,
@@ -195,6 +182,18 @@
    "report": 1,
    "role": "Moderator",
    "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Course Creator",
    "share": 1,
    "write": 1
   }

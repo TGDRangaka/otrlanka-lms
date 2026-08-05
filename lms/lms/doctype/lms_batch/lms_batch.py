@@ -8,21 +8,27 @@ from datetime import timedelta
 import frappe
 import requests
 from frappe import _
+from frappe.desk.doctype.notification_log.notification_log import make_notification_logs
 from frappe.model.document import Document
 from frappe.utils import add_days, cint, format_datetime, get_time, nowdate
 
 from lms.lms.utils import (
+	format_timezone,
 	generate_slug,
 	get_assignment_details,
+	get_instructors,
 	get_lesson_index,
 	get_lesson_url,
+	get_lms_route,
 	get_quiz_details,
+	guest_access_allowed,
 	update_payment_record,
 )
 
 
 class LMSBatch(Document):
 	def validate(self):
+		self._validate_mandatory()
 		self.validate_seats_left()
 		self.validate_batch_end_date()
 		self.validate_batch_time()
@@ -30,12 +36,16 @@ class LMSBatch(Document):
 		self.validate_payments_app()
 		self.validate_amount_and_currency()
 		self.validate_duplicate_assessments()
-		self.validate_membership()
 		self.validate_timetable()
 		self.validate_evaluation_end_date()
+		self.validate_conferencing_provider()
+
+	def on_update(self):
+		if self.has_value_changed("published") and self.published:
+			frappe.enqueue(send_notification_for_published_batch, batch=self)
 
 	def autoname(self):
-		if not self.name:
+		if not self.name and self.title:
 			self.name = generate_slug(self.title, "LMS Batch")
 
 	def validate_batch_end_date(self):
@@ -82,16 +92,6 @@ class LMSBatch(Document):
 		if self.evaluation_end_date and self.evaluation_end_date < self.end_date:
 			frappe.throw(_("Evaluation end date cannot be less than the batch end date."))
 
-	def validate_membership(self):
-		members = frappe.get_all("LMS Batch Enrollment", {"batch": self.name}, pluck="member")
-		for course in self.courses:
-			for member in members:
-				if not frappe.db.exists("LMS Enrollment", {"course": course.course, "member": member}):
-					enrollment = frappe.new_doc("LMS Enrollment")
-					enrollment.course = course.course
-					enrollment.member = member
-					enrollment.save()
-
 	def validate_seats_left(self):
 		if cint(self.seat_count) < 0:
 			frappe.throw(_("Seat count cannot be negative."))
@@ -129,32 +129,133 @@ class LMSBatch(Document):
 			if schedule.date < self.start_date or schedule.date > self.end_date:
 				frappe.throw(_("Row #{0} Date cannot be outside the batch duration.").format(schedule.idx))
 
+	def validate_conferencing_provider(self):
+		if self.is_new() or not self.conferencing_provider:
+			return
+
+		if self.conferencing_provider == "Google Meet":
+			if not self.google_meet_account:
+				frappe.throw(_("Please select a Google Meet account for this batch."))
+
+			google_meet_settings = frappe.get_doc("LMS Google Meet Settings", self.google_meet_account)
+			if not google_meet_settings.enabled:
+				frappe.throw(
+					_(
+						"The selected Google Meet account is disabled. Please enable it or select another account."
+					)
+				)
+
+			if not google_meet_settings.google_calendar:
+				frappe.throw(
+					_("The selected Google Meet account does not have a Google Calendar configured.")
+				)
+
+		elif self.conferencing_provider == "Zoom":
+			if not self.zoom_account:
+				frappe.throw(_("Please select a Zoom account for this batch."))
+
 	def on_payment_authorized(self, payment_status):
 		if payment_status in ["Authorized", "Completed"]:
 			update_payment_record("LMS Batch", self.name)
 
 
+def send_notification_for_published_batch(batch):
+	send_notification = frappe.db.get_single_value("LMS Settings", "send_notification_for_published_batches")
+	if not send_notification:
+		return
+
+	if not batch.published:
+		return
+	if batch.notification_sent:
+		return
+
+	if send_notification == "Email":
+		send_email_notification_for_published_batch(batch)
+	else:
+		send_system_notification_for_published_batch(batch)
+
+
+def send_email_notification_for_published_batch(batch):
+	brand_name = frappe.db.get_single_value("Website Settings", "app_name")
+	brand_logo = frappe.db.get_single_value("Website Settings", "banner_image")
+	subject = _("A new course has been published on {0}").format(brand_name)
+	template = "published_batch_notification"
+	students = frappe.get_all("User", {"enabled": 1}, pluck="name")
+	instructors = get_instructors("LMS Batch", batch.name)
+
+	args = {
+		"brand_logo": brand_logo,
+		"brand_name": brand_name,
+		"title": batch.title,
+		"short_introduction": batch.description,
+		"start_date": batch.start_date,
+		"end_date": batch.end_date,
+		"start_time": batch.start_time,
+		"medium": batch.medium,
+		"timezone": format_timezone(batch.timezone, batch.start_date),
+		"instructors": instructors,
+		"batch_url": frappe.utils.get_url(get_lms_route(f"batches/{batch.name}")),
+	}
+
+	frappe.sendmail(
+		recipients=instructors,
+		bcc=students,
+		subject=subject,
+		template=template,
+		args=args,
+	)
+	frappe.db.set_value("LMS Batch", batch.name, "notification_sent", 1)
+
+
+def send_system_notification_for_published_batch(batch):
+	students = frappe.get_all("User", {"enabled": 1}, pluck="name")
+	instructors = frappe.get_all("Course Instructor", {"parent": batch.name}, pluck="instructor")
+	instructor_name = frappe.db.get_value("User", instructors[0], "full_name")
+	notification = frappe._dict(
+		{
+			"subject": _("{0} has published a new batch {1}").format(
+				frappe.bold(instructor_name), frappe.bold(batch.title)
+			),
+			"email_content": _(
+				"A new batch '{0}' has been published that might interest you. Check it out!"
+			).format(batch.title),
+			"document_type": "LMS Batch",
+			"document_name": batch.name,
+			"from_user": instructors[0] if instructors else None,
+			"type": "Alert",
+			"link": get_lms_route(f"batches/{batch.name}"),
+		}
+	)
+	make_notification_logs(notification, students)
+	frappe.db.set_value("LMS Batch", batch.name, "notification_sent", 1)
+
+
 @frappe.whitelist()
 def create_live_class(
-	batch_name,
-	zoom_account,
-	title,
-	duration,
-	date,
-	time,
-	timezone,
-	auto_recording,
-	description=None,
+	batch_name: str,
+	zoom_account: str,
+	title: str,
+	duration: int,
+	date: str,
+	time: str,
+	timezone: str,
+	auto_recording: str,
+	description: str = None,
 ):
-	frappe.only_for("Moderator")
+	roles = frappe.get_roles()
+	if not any(role in roles for role in ["Moderator", "Batch Evaluator"]):
+		frappe.throw(_("You do not have permission to create a live class."))
+
 	payload = {
 		"topic": title,
 		"start_time": format_datetime(f"{date} {time}", "yyyy-MM-ddTHH:mm:ssZ"),
 		"duration": duration,
 		"agenda": description,
-		"private_meeting": True,
-		"auto_recording": "none" if auto_recording == "No Recording" else auto_recording.lower(),
 		"timezone": timezone,
+		"settings": {
+			"private_meeting": True,
+			"auto_recording": "none" if auto_recording == "No Recording" else auto_recording.lower(),
+		},
 	}
 	headers = {
 		"Authorization": "Bearer " + authenticate(zoom_account),
@@ -191,6 +292,49 @@ def create_live_class(
 		frappe.throw(_("Error creating live class. Please try again. {0}").format(response.text))
 
 
+@frappe.whitelist()
+def create_google_meet_live_class(
+	batch_name: str,
+	google_meet_account: str,
+	title: str,
+	duration: int,
+	date: str,
+	time: str,
+	timezone: str,
+	description: str = None,
+):
+	frappe.only_for(["Moderator", "Batch Evaluator"])
+
+	google_meet_settings = frappe.get_doc("LMS Google Meet Settings", google_meet_account)
+	if not google_meet_settings.enabled:
+		frappe.throw(_("Please enable the Google Meet account to use this feature."))
+
+	if not google_meet_settings.google_calendar:
+		frappe.throw(
+			_(
+				"The Google Meet account does not have a Google Calendar configured. Please set up a Google Calendar first."
+			)
+		)
+
+	class_details = frappe.get_doc(
+		{
+			"doctype": "LMS Live Class",
+			"title": title,
+			"host": frappe.session.user,
+			"date": date,
+			"time": time,
+			"duration": duration,
+			"timezone": timezone,
+			"description": description,
+			"batch_name": batch_name,
+			"conferencing_provider": "Google Meet",
+			"google_meet_account": google_meet_account,
+		}
+	)
+	class_details.save()
+	return class_details
+
+
 def authenticate(zoom_account):
 	zoom = frappe.get_doc("LMS Zoom Settings", zoom_account)
 	if not zoom.enabled:
@@ -214,7 +358,17 @@ def authenticate(zoom_account):
 
 
 @frappe.whitelist()
-def get_batch_timetable(batch):
+def get_batch_timetable(batch: str):
+	roles = frappe.get_roles()
+	is_batch_student = frappe.db.exists(
+		"LMS Batch Enrollment", {"batch": batch, "member": frappe.session.user}
+	)
+	is_admin = "Moderator" in roles or "Batch Evaluator" in roles
+	if not (is_batch_student or is_admin):
+		frappe.throw(
+			_("You do not have permission to access announcements for this batch."), frappe.PermissionError
+		)
+
 	timetable = frappe.get_all(
 		"LMS Batch Timetable",
 		filters={"parent": batch},
@@ -270,7 +424,11 @@ def get_timetable_details(timetable):
 				True
 				if frappe.db.exists(
 					"LMS Course Progress",
-					{"lesson": entry.reference_docname, "member": frappe.session.user},
+					{
+						"lesson": entry.reference_docname,
+						"member": frappe.session.user,
+						"status": "Complete",
+					},
 				)
 				else False
 			)
@@ -292,7 +450,16 @@ def send_batch_start_reminder():
 	batches = frappe.get_all(
 		"LMS Batch",
 		{"start_date": add_days(nowdate(), 1), "published": 1},
-		["name", "title", "start_date", "start_time", "medium"],
+		[
+			"name",
+			"title",
+			"start_date",
+			"start_time",
+			"medium",
+			"show_live_class",
+			"evaluation",
+			"evaluation_end_date",
+		],
 	)
 
 	for batch in batches:
@@ -302,8 +469,12 @@ def send_batch_start_reminder():
 
 
 def send_mail(batch, student):
-	subject = _("Your batch {0} is starting tomorrow").format(batch.title)
-	template = "batch_start_reminder"
+	if batch.show_live_class:
+		subject = _("Your batch {0} is starting tomorrow").format(batch.title)
+		template = "batch_start_reminder"
+	else:
+		subject = _("You're enrolled in {0} – start whenever you're ready").format(batch.title)
+		template = "batch_start_reminder_recorded"
 
 	args = {
 		"student_name": student.member_name,
@@ -312,6 +483,8 @@ def send_mail(batch, student):
 		"start_time": batch.start_time,
 		"medium": batch.medium,
 		"name": batch.name,
+		"evaluation": batch.evaluation,
+		"evaluation_end_date": batch.evaluation_end_date,
 	}
 
 	frappe.sendmail(
@@ -321,3 +494,26 @@ def send_mail(batch, student):
 		args=args,
 		header=[_(f"Batch Start Reminder: {batch.title}"), "orange"],
 	)
+
+
+def has_permission(doc, ptype="read", user=None):
+	user = user or frappe.session.user
+	if user == "Guest" and not guest_access_allowed():
+		return False
+
+	roles = frappe.get_roles(user)
+	if "Moderator" in roles or "Batch Evaluator" in roles:
+		return True
+
+	if ptype not in ("read", "select", "print"):
+		return False
+
+	is_enrolled = frappe.db.exists("LMS Batch Enrollment", {"batch": doc.name, "member": user})
+	if is_enrolled:
+		return True
+
+	is_batch_published = frappe.db.get_value("LMS Batch", doc.name, "published")
+	if is_batch_published:
+		return True
+
+	return False

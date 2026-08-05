@@ -5,7 +5,7 @@
 		class=""
 	>
 		<template #prefix>
-			<GraduationCap class="size-4 stroke-1.5" />
+			<span class="lucide-graduation-cap size-4" />
 		</template>
 		{{ __('View Certificate') }}
 	</Button>
@@ -29,7 +29,7 @@
 		>
 			<Button class="w-full">
 				<template #prefix>
-					<GraduationCap class="size-4 stroke-1.5" />
+					<span class="lucide-graduation-cap size-4" />
 				</template>
 				{{ __('Get Certified') }}
 			</Button>
@@ -45,41 +45,41 @@
 		>
 			<Button class="w-full">
 				<template #prefix>
-					<GraduationCap class="size-4 stroke-1.5" />
+					<span class="lucide-graduation-cap size-4" />
 				</template>
 				{{ __('Get Certified') }}
 			</Button>
 		</router-link>
 	</div>
 </template>
-<script setup>
+<script setup lang="ts">
 import { Button, createResource } from 'frappe-ui'
 import { inject } from 'vue'
-import { GraduationCap } from 'lucide-vue-next'
+import type { CertificationInfo, Resource, SessionUser } from '@/types'
 
-const user = inject('$user')
+const user = inject<SessionUser>('$user')!
 
-const props = defineProps({
-	courseName: {
-		type: String,
-		required: true,
-	},
-})
+const props = defineProps<{
+	courseName: string
+}>()
 
 const certification = createResource({
 	url: 'lms.lms.api.get_certification_details',
-	params: {
-		course: props.courseName,
+	makeParams() {
+		return {
+			course: props.courseName,
+		}
 	},
 	auto: user.data ? true : false,
-	cache: ['certificationData', user.data?.name],
-})
+}) as Resource<CertificationInfo | null>
 
 const downloadCertificate = () => {
+	const cert = certification.data?.certificate
+	if (!cert) return
 	window.open(
 		`/api/method/frappe.utils.print_format.download_pdf?doctype=LMS+Certificate&name=${
-			certification.data.certificate.name
-		}&format=${encodeURIComponent(certification.data.certificate.template)}`
+			cert.name
+		}&format=${encodeURIComponent(cert.template)}`
 	)
 }
 </script>

@@ -1,17 +1,23 @@
 # Copyright (c) 2021, Frappe and contributors
 # For license information, please see license.txt
 
-import json
 import random
 
 import frappe
 from frappe import _
+from frappe.desk.doctype.notification_log.notification_log import make_notification_logs
 from frappe.model.document import Document
-from frappe.utils import cint, today
+from frappe.utils import cint, flt, today
 
-from lms.lms.utils import get_chapters
-
-from ...utils import generate_slug, update_payment_record, validate_image
+from ...utils import (
+	generate_slug,
+	get_average_rating,
+	get_instructors,
+	get_lesson_count,
+	get_lms_route,
+	update_payment_record,
+	validate_image,
+)
 
 
 class LMSCourse(Document):
@@ -27,7 +33,9 @@ class LMSCourse(Document):
 		self.validate_card_gradient()
 
 	def validate_published(self):
-		if self.published and not self.published_on:
+		if not self.published:
+			return
+		if self.is_new() or self.has_value_changed("published") or not self.published_on:
 			self.published_on = today()
 
 	def validate_instructors(self):
@@ -43,8 +51,12 @@ class LMSCourse(Document):
 			).save(ignore_permissions=True)
 
 	def validate_video_link(self):
-		if self.video_link and "/" in self.video_link:
-			self.video_link = self.video_link.split("/")[-1]
+		# Store video_link exactly as entered: a YouTube/Vimeo link or an uploaded
+		# file path. The frontend normalizes links for rendering (it handles full
+		# URLs and bare ids alike), so there's no need to strip URLs down to a bare
+		# id here. Stripping was lossy: it mangled uploaded /files paths and turned
+		# some YouTube urls into ids that don't round-trip cleanly.
+		return
 
 	def validate_status(self):
 		if self.published:
@@ -68,8 +80,11 @@ class LMSCourse(Document):
 		if self.paid_certificate and not self.evaluator:
 			frappe.throw(_("Evaluator is required for paid certificates."))
 
+		if self.paid_certificate and not self.timezone:
+			frappe.throw(_("Timezone is required for paid certificates."))
+
 	def validate_amount_and_currency(self):
-		if self.paid_course and (cint(self.course_price) < 0 or not self.currency):
+		if self.paid_course and (cint(self.course_price) <= 0 or not self.currency):
 			frappe.throw(_("Amount and currency are required for paid courses."))
 
 		if self.paid_certificate and (cint(self.course_price) <= 0 or not self.currency):
@@ -106,7 +121,7 @@ class LMSCourse(Document):
 		subject = self.title + " is available!"
 		args = {
 			"title": self.title,
-			"course_link": f"/lms/courses/{self.name}",
+			"course_link": get_lms_route(f"courses/{self.name}"),
 			"app_name": frappe.db.get_single_value("System Settings", "app_name"),
 			"site_url": frappe.utils.get_url(),
 		}
@@ -131,88 +146,94 @@ class LMSCourse(Document):
 	def __repr__(self):
 		return f"<Course#{self.name}>"
 
-	def has_mentor(self, email):
-		"""Checks if this course has a mentor with given email."""
-		if not email or email == "Guest":
-			return False
 
-		mapping = frappe.get_all("LMS Course Mentor Mapping", {"course": self.name, "mentor": email})
-		return mapping != []
+def send_notification_for_published_courses():
+	send_notification = frappe.db.get_single_value("LMS Settings", "send_notification_for_published_courses")
+	if not send_notification:
+		return
 
-	def add_mentor(self, email):
-		"""Adds a new mentor to the course."""
-		if not email:
-			raise ValueError("Invalid email")
-		if email == "Guest":
-			raise ValueError("Guest user can not be added as a mentor")
+	courses_published_today = frappe.get_all(
+		"LMS Course",
+		{
+			"published_on": today(),
+			"notification_sent": 0,
+		},
+		["name", "title", "short_introduction"],
+	)
 
-		# given user is already a mentor
-		if self.has_mentor(email):
-			return
+	if not courses_published_today:
+		return
 
-		doc = frappe.get_doc({"doctype": "LMS Course Mentor Mapping", "course": self.name, "mentor": email})
-		doc.insert()
+	if send_notification == "Email":
+		send_email_notification_for_published_courses(courses_published_today)
+	else:
+		send_system_notification_for_published_courses(courses_published_today)
 
-	def get_student_batch(self, email):
-		"""Returns the batch the given student is part of.
 
-		Returns None if the student is not part of any batch.
-		"""
-		if not email:
-			return
+def send_email_notification_for_published_courses(courses):
+	brand_name = frappe.db.get_single_value("Website Settings", "app_name")
+	brand_logo = frappe.db.get_single_value("Website Settings", "banner_image")
+	subject = _("A new course has been published on {0}").format(brand_name)
+	template = "published_course_notification"
+	students = frappe.get_all("User", {"enabled": 1}, pluck="name")
 
-		batch_name = frappe.get_value(
-			doctype="LMS Enrollment",
-			filters={"course": self.name, "member_type": "Student", "member": email},
-			fieldname="batch_old",
+	for course in courses:
+		instructors = get_instructors("LMS Course", course.name)
+
+		args = {
+			"brand_logo": brand_logo,
+			"brand_name": brand_name,
+			"title": course.title,
+			"short_introduction": course.short_introduction,
+			"instructors": instructors,
+			"course_url": frappe.utils.get_url(get_lms_route(f"courses/{course.name}")),
+		}
+
+		frappe.sendmail(
+			recipients=instructors,
+			bcc=students,
+			subject=subject,
+			template=template,
+			args=args,
 		)
-		return batch_name and frappe.get_doc("LMS Batch Old", batch_name)
+		frappe.db.set_value("LMS Course", course.name, "notification_sent", 1)
 
-	def get_batches(self, mentor=None):
-		batches = frappe.get_all("LMS Batch Old", {"course": self.name})
-		if mentor:
-			# TODO: optimize this
-			memberships = frappe.db.get_all("LMS Enrollment", {"member": mentor}, ["batch_old"])
-			batch_names = {m.batch_old for m in memberships}
-			return [b for b in batches if b.name in batch_names]
 
-	def get_cohorts(self):
-		return frappe.get_all(
-			"Cohort",
-			{"course": self.name},
-			["name", "slug", "title", "begin_date", "end_date"],
-			order_by="creation",
+def send_system_notification_for_published_courses(courses):
+	for course in courses:
+		students = frappe.get_all("User", {"enabled": 1}, pluck="name")
+		instructors = frappe.get_all("Course Instructor", {"parent": course.name}, pluck="instructor")
+		instructor_name = frappe.db.get_value("User", instructors[0], "full_name")
+		notification = frappe._dict(
+			{
+				"subject": _("{0} has published a new course {1}").format(
+					frappe.bold(instructor_name), frappe.bold(course.title)
+				),
+				"email_content": _(
+					"A new course '{0}' has been published that might interest you. Check it out!"
+				).format(course.title),
+				"document_type": "LMS Course",
+				"document_name": course.name,
+				"from_user": instructors[0] if instructors else None,
+				"type": "Alert",
+				"link": get_lms_route(f"courses/{course.name}"),
+			}
 		)
+		make_notification_logs(notification, students)
+		frappe.db.set_value("LMS Course", course.name, "notification_sent", 1)
 
-	def get_cohort(self, cohort_slug):
-		name = frappe.get_value("Cohort", {"course": self.name, "slug": cohort_slug})
-		return name and frappe.get_doc("Cohort", name)
 
-	def reindex_exercises(self):
-		for i, c in enumerate(get_chapters(self.name), start=1):
-			self._reindex_exercises_in_chapter(c, i)
+def update_course_statistics():
+	courses = frappe.get_all("LMS Course", fields=["name"])
 
-	def _reindex_exercises_in_chapter(self, c, index):
-		i = 1
-		for lesson in self.get_lessons(c):
-			for exercise in lesson.get_exercises():
-				exercise.index_ = i
-				exercise.index_label = f"{index}.{i}"
-				exercise.save()
-				i += 1
+	for course in courses:
+		lessons = get_lesson_count(course.name)
+		enrollments = frappe.db.count("LMS Enrollment", {"course": course.name, "member_type": "Student"})
+		avg_rating = get_average_rating(course.name) or 0
+		avg_rating = flt(avg_rating, frappe.get_system_settings("float_precision") or 3)
 
-	def get_all_memberships(self, member):
-		all_memberships = frappe.get_all(
-			"LMS Enrollment", {"member": member, "course": self.name}, ["batch_old"]
+		frappe.db.set_value(
+			"LMS Course",
+			course.name,
+			{"lessons": lessons, "enrollments": enrollments, "rating": avg_rating},
 		)
-		for membership in all_memberships:
-			membership.batch_title = frappe.db.get_value("LMS Batch Old", membership.batch_old, "title")
-		return all_memberships
-
-
-@frappe.whitelist()
-def reindex_exercises(doc):
-	course_data = json.loads(doc)
-	course = frappe.get_doc("LMS Course", course_data["name"])
-	course.reindex_exercises()
-	frappe.msgprint("All exercises in this course have been re-indexed.")

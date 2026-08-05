@@ -1,20 +1,15 @@
 <template>
-	<Dialog
-		v-model="show"
-		:options="{
-			size: 'lg',
-		}"
-	>
-		<template #body>
+	<Dialog v-model:open="show" size="lg" bare>
+		<template #default>
 			<div class="p-5 text-base">
-				<div class="text-lg text-ink-gray-9 font-semibold mb-5">
+				<div class="text-lg-semibold text-ink-gray-9 mb-5">
 					{{
 						assignmentID === 'new'
 							? __('Create an Assignment')
 							: __('Edit Assignment')
 					}}
 				</div>
-				<div class="space-y-4 max-h-[75vh] overflow-y-auto">
+				<div class="space-y-4 max-h-[75vh] overflow-y-auto p-1">
 					<FormControl
 						v-model="assignment.title"
 						:label="__('Title')"
@@ -27,22 +22,29 @@
 						:label="__('Submission Type')"
 						:required="true"
 					/>
-					<div>
-						<div class="text-xs text-ink-gray-5 mb-2">
-							{{ __('Question') }}
-							<span class="text-ink-red-3">*</span>
-						</div>
-						<TextEditor
+					<Link
+						v-model="assignment.course"
+						:label="__('Course')"
+						doctype="LMS Course"
+						placeholder=" "
+					/>
+					<div class="space-y-1.5">
+						<InputLabel
+							:id="questionLabelId"
+							:label="__('Question')"
+							:required="true"
+						/>
+						<RichTextEditor
 							:content="assignment.question"
 							@change="(val) => (assignment.question = val)"
 							:editable="true"
 							:fixedMenu="true"
-							editorClass="prose-sm max-w-none border-b border-x bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem] max-h-[18rem] overflow-y-auto"
+							editorClass="prose-sm max-w-none border-b border-x border-outline-elevation-2 bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[10rem] max-h-[18rem] overflow-y-auto"
 						/>
 					</div>
 				</div>
 
-				<div class="flex justify-end space-x-2 mt-5">
+				<div class="flex justify-end gap-x-2 mt-5">
 					<router-link
 						:to="{
 							name: 'AssignmentSubmissionList',
@@ -64,8 +66,14 @@
 	</Dialog>
 </template>
 <script setup lang="ts">
-import { Button, Dialog, FormControl, TextEditor, toast } from 'frappe-ui'
-import { computed, reactive, watch } from 'vue'
+import { Button, Dialog, FormControl, toast } from 'frappe-ui'
+import { computed, reactive, watch, useId } from 'vue'
+import { InputLabel } from '@/components/Form/labeling'
+import { sanitizeHTML } from '@/utils'
+import Link from '@/components/Controls/Link.vue'
+import RichTextEditor from '@/components/RichTextEditor.vue'
+
+const questionLabelId = useId()
 
 const show = defineModel()
 const assignments = defineModel<Assignments>('assignments')
@@ -74,6 +82,7 @@ interface Assignment {
 	title: string
 	type: string
 	question: string
+	course?: string
 }
 
 interface Assignments {
@@ -88,6 +97,7 @@ const assignment = reactive({
 	title: '',
 	type: '',
 	question: '',
+	course: '',
 })
 
 const props = defineProps({
@@ -106,6 +116,7 @@ watch(
 					assignment.title = row.title
 					assignment.type = row.type
 					assignment.question = row.question
+					assignment.course = row.course || ''
 				}
 			})
 		}
@@ -113,33 +124,55 @@ watch(
 	{ flush: 'post' }
 )
 
-const saveAssignment = () => {
-	if (props.assignmentID == 'new') {
-		assignments.value.insert.submit(
-			{
-				...assignment,
-			},
-			{
-				onSuccess() {
-					show.value = false
-					toast.success(__('Assignment created successfully'))
-				},
-			}
-		)
-	} else {
-		assignments.value.setValue.submit(
-			{
-				...assignment,
-				name: props.assignmentID,
-			},
-			{
-				onSuccess() {
-					show.value = false
-					toast.success(__('Assignment updated successfully'))
-				},
-			}
-		)
+watch(show, (newVal) => {
+	if (newVal && props.assignmentID === 'new') {
+		assignment.title = ''
+		assignment.type = ''
+		assignment.question = ''
 	}
+})
+
+const validateFields = () => {
+	assignment.title = sanitizeHTML(assignment.title.trim())
+	assignment.question = sanitizeHTML(assignment.question)
+}
+
+const saveAssignment = () => {
+	validateFields()
+	if (props.assignmentID == 'new') {
+		createAssignment()
+	} else {
+		updateAssignment()
+	}
+}
+
+const createAssignment = () => {
+	assignments.value.insert.submit(
+		{
+			...assignment,
+		},
+		{
+			onSuccess() {
+				show.value = false
+				toast.success(__('Assignment created successfully'))
+			},
+		}
+	)
+}
+
+const updateAssignment = () => {
+	assignments.value.setValue.submit(
+		{
+			...assignment,
+			name: props.assignmentID,
+		},
+		{
+			onSuccess() {
+				show.value = false
+				toast.success(__('Assignment updated successfully'))
+			},
+		}
+	)
 }
 
 const assignmentOptions = computed(() => {

@@ -8,7 +8,11 @@
 				)
 			}}
 
-			<div v-for="(quiz, index) in quizzes" class="pl-3 mt-1">
+			<div
+				v-for="(quiz, index) in quizzes"
+				:key="`${quiz.quiz}-${index}`"
+				class="ps-3 mt-1"
+			>
 				<span>
 					{{ index + 1 }}. <span class="font-semibold"> {{ quiz.quiz }} </span>
 				</span>
@@ -25,18 +29,20 @@
 				@ended="videoEnded"
 				@click="togglePlay"
 				oncontextmenu="return false"
-				class="rounded-md border border-gray-100 cursor-pointer"
+				class="rounded-md border border-outline-gray-1 cursor-pointer"
 				ref="videoRef"
 				:src="fileURL"
 				:type="type"
 			></video>
-			<div
+			<button
+				type="button"
 				v-if="!playing"
+				:aria-label="__('Play video')"
 				class="absolute inset-0 flex items-center justify-center cursor-pointer"
 				@click="playVideo"
 			>
 				<div
-					class="rounded-full p-4 pl-4.5"
+					class="rounded-full p-4 ps-4.5"
 					style="
 						background: radial-gradient(
 							circle,
@@ -47,21 +53,22 @@
 				>
 					<Play />
 				</div>
-			</div>
+			</button>
 			<div
-				class="flex items-center space-x-2 py-2 px-1 text-ink-white bg-gradient-to-b from-transparent to-black/75 absolute bottom-0 left-0 right-0 mx-auto rounded-md"
+				class="flex items-center gap-x-2 py-2 px-1 text-ink-base bg-gradient-to-b from-transparent to-black/75 absolute bottom-0 start-0 end-0 mx-auto rounded-md"
 				:class="{
 					'invisible group-hover:visible': playing,
 				}"
 			>
-				<Button variant="ghost" class="hover:bg-transparent">
+				<Button
+					variant="ghost"
+					class="hover:bg-transparent"
+					:label="playing ? __('Pause') : __('Play')"
+					@click="togglePlay"
+				>
 					<template #icon>
-						<Play
-							v-if="!playing"
-							@click="playVideo"
-							class="size-4 text-ink-gray-9"
-						/>
-						<Pause v-else @click="pauseVideo" class="size-5 text-ink-white" />
+						<Play v-if="!playing" class="size-4 text-ink-gray-9" />
+						<span v-else class="lucide-pause size-5 text-ink-base" />
 					</template>
 				</Button>
 
@@ -73,10 +80,11 @@
 						step="0.1"
 						v-model="currentTime"
 						@input="changeCurrentTime"
+						:aria-label="__('Seek')"
 						class="duration-slider h-1"
 					/>
 					<!-- QUIZ MARKERS -->
-					<div class="absolute top-0 left-0 w-full h-full pointer-events-none">
+					<div class="absolute top-0 start-0 w-full h-full pointer-events-none">
 						<div
 							v-for="(quiz, index) in quizzes"
 							:key="index"
@@ -86,26 +94,33 @@
 					</div>
 				</div>
 
-				<span class="text-sm font-medium">
+				<span class="text-sm-medium">
 					{{ formatSeconds(currentTime) }} / {{ formatSeconds(duration) }}
 				</span>
+
+				<Dropdown :options="dropdownOptions">
+					<Button>{{ playbackSpeedLabel }}</Button>
+				</Dropdown>
+
 				<Button
 					variant="ghost"
 					@click="toggleMute"
+					:label="muted ? __('Unmute') : __('Mute')"
 					class="hover:bg-transparent"
 				>
 					<template #icon>
-						<Volume2 v-if="!muted" class="size-5 text-ink-white" />
-						<VolumeX v-else class="size-5 text-ink-white" />
+						<span class="lucide-volume-2 size-5 text-ink-base" v-if="!muted" />
+						<span class="lucide-volume-x size-5 text-ink-base" v-else />
 					</template>
 				</Button>
 				<Button
 					variant="ghost"
 					@click="toggleFullscreen"
+					:label="__('Toggle fullscreen')"
 					class="hover:bg-transparent"
 				>
 					<template #icon>
-						<Maximize class="size-5 text-ink-white" />
+						<span class="lucide-maximize size-5 text-ink-base" />
 					</template>
 				</Button>
 			</div>
@@ -116,8 +131,8 @@
 			:inVideo="true"
 			:backToVideo="resumeVideo"
 		/>
-		<div v-if="!readOnly" @click="showQuizModal = true">
-			<Button>
+		<div v-if="!readOnly">
+			<Button class="text-p-base-medium" @click="showQuizModal = true">
 				{{ __('Add Quiz to Video') }}
 			</Button>
 		</div>
@@ -128,13 +143,8 @@
 		:saveQuizzes="saveQuizzes"
 		:duration="duration"
 	/>
-	<Dialog
-		v-model="showQuizLoader"
-		:options="{
-			size: 'sm',
-		}"
-	>
-		<template #body>
+	<Dialog v-model:open="showQuizLoader" size="sm" bare>
+		<template #default>
 			<div class="flex flex-col space-y-2 p-5 text-base leading-5">
 				<span class="font-semibold">
 					{{ __('Time for a Quiz') }}
@@ -151,10 +161,9 @@
 	</Dialog>
 </template>
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
-import { Pause, Maximize, Volume2, VolumeX } from 'lucide-vue-next'
-import { Button, Dialog } from 'frappe-ui'
-import { formatSeconds, formatTimestamp } from '@/utils'
+import { ref, onMounted, computed, watch, onBeforeUnmount } from 'vue'
+import { Button, Dialog, Dropdown } from 'frappe-ui'
+import { formatSeconds, formatTimestamp } from '@/utils/format'
 import { useSettings } from '@/stores/settings'
 import Play from '@/components/Icons/Play.vue'
 import QuizInVideo from '@/components/Modals/QuizInVideo.vue'
@@ -171,7 +180,17 @@ const showQuizLoader = ref(false)
 const quizLoadTimer = ref(0)
 const currentQuiz = ref(null)
 const nextQuiz = ref({})
-const { preventSkippingVideos } = useSettings()
+const { settings } = useSettings()
+
+// Speed control states
+const playbackSpeed = ref(1)
+const playbackSpeedLabel = ref('1x')
+const playbackSpeeds = [
+	{ label: '0.5x', value: 0.5 },
+	{ label: '1x', value: 1 },
+	{ label: '1.5x', value: 1.5 },
+	{ label: '2x', value: 2 },
+]
 
 const props = defineProps({
 	file: {
@@ -199,6 +218,9 @@ const props = defineProps({
 onMounted(() => {
 	updateCurrentTime()
 	updateNextQuiz()
+	if (videoRef.value) {
+		videoRef.value.playbackRate = 1
+	}
 })
 
 const updateCurrentTime = () => {
@@ -299,7 +321,7 @@ const toggleMute = () => {
 
 const changeCurrentTime = () => {
 	if (
-		preventSkippingVideos.data &&
+		settings.data?.prevent_skipping_videos &&
 		currentTime.value > videoRef.value.currentTime
 	)
 		return
@@ -318,9 +340,25 @@ const toggleFullscreen = () => {
 const getQuizMarkerStyle = (time) => {
 	const percentage = ((time - 5) / Math.ceil(duration.value)) * 100
 	return {
-		left: `${percentage}%`,
+		insetInlineStart: `${percentage}%`,
 	}
 }
+
+const setPlaybackSpeed = (speed, label) => {
+	playbackSpeed.value = speed
+	playbackSpeedLabel.value = label
+	if (videoRef.value) {
+		videoRef.value.playbackRate = speed
+	}
+}
+
+const dropdownOptions = computed(() =>
+	playbackSpeeds.map((speed) => ({
+		label: speed.label,
+		active: playbackSpeed.value === speed.value,
+		onClick: () => setPlaybackSpeed(speed.value, speed.label),
+	}))
+)
 </script>
 
 <style scoped>

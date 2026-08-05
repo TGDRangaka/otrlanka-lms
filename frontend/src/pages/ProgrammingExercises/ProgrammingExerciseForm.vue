@@ -1,15 +1,20 @@
 <template>
-	<Dialog v-model="show" :options="{ size: '5xl' }">
-		<template #body-title>
-			<div class="text-xl font-semibold text-ink-gray-9">
-				{{
-					props.exerciseID === 'new'
-						? __('Create Programming Exercise')
-						: __('Edit Programming Exercise')
-				}}
+	<Dialog v-model="show" size="4xl">
+		<template #title>
+			<div class="flex items-center gap-x-2">
+				<div class="text-lg font-semibold text-ink-gray-9">
+					{{
+						props.exerciseID === 'new'
+							? __('Create Programming Exercise')
+							: __('Edit Programming Exercise')
+					}}
+				</div>
+				<Badge v-if="isDirty" theme="orange">
+					{{ __('Not Saved') }}
+				</Badge>
 			</div>
 		</template>
-		<template #body-content>
+		<template #default>
 			<div class="grid grid-cols-2 gap-10">
 				<div class="space-y-4">
 					<FormControl
@@ -25,7 +30,7 @@
 						:required="true"
 					/>
 					<ChildTable
-						v-model="exercise.test_cases"
+						v-model="testCases.data"
 						:label="__('Test Cases')"
 						:columns="testCaseColumns"
 						:required="true"
@@ -36,37 +41,38 @@
 					/>
 				</div>
 				<div>
-					<div>
-						<div class="text-xs text-ink-gray-5 mb-2">
-							{{ __('Problem Statement') }}
-							<span class="text-ink-red-3">*</span>
-						</div>
-						<TextEditor
+					<div class="space-y-1.5">
+						<InputLabel
+							:id="problemStatementLabelId"
+							:label="__('Problem Statement')"
+							:required="true"
+						/>
+						<RichTextEditor
 							:content="exercise.problem_statement"
 							@change="(val: string) => (exercise.problem_statement = val)"
 							:editable="true"
 							:fixedMenu="true"
-							editorClass="prose-sm max-w-none border-b border-x bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem] max-h-[21rem] overflow-y-auto"
+							editorClass="prose-sm max-w-none border-b border-x border-outline-elevation-2 bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[10rem] max-h-[21rem] overflow-y-auto"
 						/>
 					</div>
 				</div>
 			</div>
 		</template>
 		<template #actions="{ close }">
-			<div class="flex justify-end space-x-2 group">
+			<div class="flex justify-end gap-x-2 group">
 				<Button
 					v-if="exerciseID != 'new'"
 					@click="deleteExercise(close)"
 					variant="outline"
 					theme="red"
-					class="invisible group-hover:visible"
 				>
 					<template #prefix>
-						<Trash2 class="size-4 stroke-1.5" />
+						<span class="lucide-trash-2 size-4" />
 					</template>
 					{{ __('Delete') }}
 				</Button>
 				<router-link
+					v-if="exerciseID != 'new'"
 					:to="{
 						name: 'ProgrammingExerciseSubmission',
 						params: {
@@ -75,14 +81,15 @@
 						},
 					}"
 				>
-					<Button>
+					<Button class="text-p-base-medium">
 						<template #prefix>
-							<Play class="size-4 stroke-1.5" />
+							<span class="lucide-play size-4" />
 						</template>
 						{{ __('Test this Exercise') }}
 					</Button>
 				</router-link>
 				<router-link
+					v-if="exerciseID != 'new'"
 					:to="{
 						name: 'ProgrammingExerciseSubmissions',
 						query: {
@@ -92,7 +99,7 @@
 				>
 					<Button>
 						<template #prefix>
-							<ClipboardList class="size-4 stroke-1.5" />
+							<span class="lucide-clipboard-list size-4" />
 						</template>
 						{{ __('Check Submission') }}
 					</Button>
@@ -105,25 +112,28 @@
 	</Dialog>
 </template>
 <script setup lang="ts">
+import { computed, ref, watch, useId } from 'vue'
+import { InputLabel } from '@/components/Form/labeling'
+import { sanitizeHTML } from '@/utils'
 import {
+	Badge,
 	Button,
 	createListResource,
 	Dialog,
 	FormControl,
-	TextEditor,
 	toast,
 } from 'frappe-ui'
-import { computed, ref, watch } from 'vue'
-import {
-	ProgrammingExercise,
-	ProgrammingExercises,
-	TestCase,
-} from '@/types/programming-exercise'
+import { ProgrammingExercise, ProgrammingExercises, TestCase } from '@/types'
 import ChildTable from '@/components/Controls/ChildTable.vue'
-import { ClipboardList, Play, Trash2 } from 'lucide-vue-next'
+import RichTextEditor from '@/components/RichTextEditor.vue'
+
+const problemStatementLabelId = useId()
 
 const show = defineModel()
 const exercises = defineModel<ProgrammingExercises>('exercises')
+const totalExercises = defineModel<number>('totalExercises')
+const isDirty = ref(false)
+const originalTestCaseCount = ref(0)
 
 const exercise = ref<ProgrammingExercise>({
 	title: '',
@@ -171,15 +181,21 @@ const setExerciseData = () => {
 			test_cases: [],
 		}
 	}
+	isDirty.value = false
 }
 
 const testCases = createListResource({
 	doctype: 'LMS Test Case',
 	fields: ['input', 'expected_output', 'name'],
-	cache: ['testCases', props.exerciseID],
 	parent: 'LMS Programming Exercise',
+	orderBy: 'idx',
 	onSuccess(data: TestCase[]) {
-		exercise.value.test_cases = data
+		isDirty.value = false
+		originalTestCaseCount.value = data.length
+	},
+	onError(err: any) {
+		toast.error(__(err.messages?.[0] || err))
+		console.error('Error loading testCases:', err)
 	},
 })
 
@@ -192,9 +208,40 @@ const fetchTestCases = () => {
 		},
 	})
 	testCases.reload()
+	originalTestCaseCount.value = testCases.data?.length
+}
+
+const validateTitle = () => {
+	exercise.value.title = sanitizeHTML(exercise.value.title.trim())
+}
+
+watch(
+	exercise,
+	() => {
+		isDirty.value = true
+	},
+	{ deep: true }
+)
+
+watch(testCases, () => {
+	if (testCases.data?.length !== originalTestCaseCount.value) {
+		isDirty.value = true
+	}
+})
+
+const updateTestCasesInExercise = () => {
+	exercise.value.test_cases = testCases.data.map(
+		(tc: TestCase, index: number) => ({
+			input: tc.input,
+			expected_output: tc.expected_output,
+			idx: index + 1,
+		})
+	)
 }
 
 const saveExercise = (close: () => void) => {
+	validateTitle()
+	updateTestCasesInExercise()
 	if (props.exerciseID == 'new') createNewExercise(close)
 	else updateExercise(close)
 }
@@ -207,7 +254,9 @@ const createNewExercise = (close: () => void) => {
 		{
 			onSuccess() {
 				close()
+				isDirty.value = false
 				exercises.value?.reload()
+				totalExercises.value.reload()
 				toast.success(__('Programming Exercise created successfully'))
 			},
 			onError(err: any) {
@@ -226,6 +275,7 @@ const updateExercise = (close: () => void) => {
 		{
 			onSuccess() {
 				close()
+				isDirty.value = false
 				exercises.value?.reload()
 				toast.success(__('Programming Exercise updated successfully'))
 			},

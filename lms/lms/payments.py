@@ -1,4 +1,13 @@
 import frappe
+from frappe import _
+
+from lms.lms.utils import (
+	complete_enrollment,
+	get_lms_route,
+	get_order_summary,
+)
+
+GATEWAY_NOT_CONFIGURED_TITLE = "Payment Gateway Not Configured"
 
 
 def get_payment_gateway():
@@ -6,37 +15,91 @@ def get_payment_gateway():
 
 
 def get_controller(payment_gateway):
-	if "payments" in frappe.get_installed_apps():
-		from payments.utils import get_payment_gateway_controller
+	validate_payment_gateway(payment_gateway)
 
-		return get_payment_gateway_controller(payment_gateway)
+	from payments.utils import get_payment_gateway_controller
+
+	return get_payment_gateway_controller(payment_gateway)
 
 
-def validate_currency(payment_gateway, currency):
-	controller = get_controller(payment_gateway)
-	controller().validate_transaction_currency(currency)
+def validate_payment_gateway(payment_gateway):
+	"""Fail with an actionable message instead of a permission error from the payments app."""
+	if "payments" not in frappe.get_installed_apps():
+		frappe.throw(
+			_("The Payments app is not installed. Please contact the administrator."),
+			title=_(GATEWAY_NOT_CONFIGURED_TITLE),
+		)
+
+	if not payment_gateway:
+		frappe.throw(
+			_("No payment gateway is configured. Please contact the administrator."),
+			title=_(GATEWAY_NOT_CONFIGURED_TITLE),
+		)
+
+	if not frappe.db.exists("Payment Gateway", payment_gateway):
+		frappe.throw(
+			_("The configured payment gateway {0} does not exist. Please contact the administrator.").format(
+				frappe.bold(payment_gateway)
+			),
+			title=_(GATEWAY_NOT_CONFIGURED_TITLE),
+		)
 
 
 @frappe.whitelist()
 def get_payment_link(
-	doctype,
-	docname,
-	title,
-	amount,
-	total_amount,
-	currency,
-	address,
-	redirect_to,
-	payment_for_certificate,
+	doctype: str,
+	docname: str,
+	address: dict,
+	payment_for_certificate: int,
+	coupon_code: str | None = None,
+	country: str | None = None,
 ):
 	payment_gateway = get_payment_gateway()
 	address = frappe._dict(address)
-	amount_with_gst = total_amount if total_amount != amount else 0
+	redirect_to = get_redirect_url(doctype, docname, payment_for_certificate)
+
+	details = frappe._dict(get_order_summary(doctype, docname, coupon=coupon_code, country=country))
+	title = details.title
+	currency = details.currency
+	original_amount = details.original_amount
+	discount_amount = details.get("discount_amount", 0)
+	gst_amount = details.get("gst_applied", 0)
+	amount = original_amount - discount_amount
+	amount_with_gst = get_amount_with_gst(amount, gst_amount)
+	coupon = details.get("coupon")
+	total_amount = amount_with_gst if amount_with_gst else amount
+
+	# Checkout is reachable from a stale tab or the back button. Paying again for
+	# access the learner already has would charge them twice, count another
+	# coupon redemption, and grant nothing. The billing details they typed are
+	# still worth keeping.
+	if already_has_access(doctype, docname, payment_for_certificate):
+		save_address(address)
+		return redirect_to
+
+	# Resolve the controller before writing anything: get_controller validates the
+	# gateway and fails with an actionable message, so a misconfigured gateway
+	# doesn't leave an orphan Address / LMS Payment row behind.
+	controller = get_controller(payment_gateway) if total_amount > 0 else None
 
 	payment = record_payment(
-		address, doctype, docname, amount, currency, amount_with_gst, payment_for_certificate
+		address,
+		doctype,
+		docname,
+		amount,
+		original_amount,
+		currency,
+		amount_with_gst,
+		discount_amount,
+		payment_for_certificate,
+		coupon_code,
+		coupon,
 	)
-	controller = get_controller(payment_gateway)
+
+	if total_amount <= 0:
+		frappe.db.set_value("LMS Payment", payment.name, "payment_received", 1)
+		complete_enrollment(payment.name, doctype, docname)
+		return redirect_to
 
 	payment_details = {
 		"amount": total_amount,
@@ -51,23 +114,52 @@ def get_payment_link(
 		"redirect_to": redirect_to,
 		"payment": payment.name,
 	}
-	if payment_gateway == "Razorpay":
-		order = controller.create_order(**payment_details)
-		payment_details.update({"order_id": order.get("id")})
 
-	url = controller.get_payment_url(**payment_details)
+	# The controller creates the order itself when no `order_id` is supplied
+	# (see RazorpaySettings.get_payment_url). Pre-creating one here made the
+	# gateway skip that branch and left two Integration Requests per attempt
+	# (one in paise without an `order_id`, one in rupees with it), which
+	# update_payment_record's "creation desc, limit 1" lookup can resolve to the
+	# wrong row.
+	return controller.get_payment_url(**payment_details)
 
-	return url
+
+def already_has_access(doctype: str, docname: str, payment_for_certificate: int) -> bool:
+	member = frappe.session.user
+
+	if int(payment_for_certificate):
+		return bool(
+			frappe.db.get_value(
+				"LMS Enrollment", {"member": member, "course": docname}, "purchased_certificate"
+			)
+		)
+
+	if doctype == "LMS Course":
+		return bool(frappe.db.exists("LMS Enrollment", {"member": member, "course": docname}))
+
+	return bool(frappe.db.exists("LMS Batch Enrollment", {"member": member, "batch": docname}))
+
+
+def get_amount_with_gst(amount: float, gst_amount: float) -> float:
+	amount_with_gst = 0
+	if gst_amount:
+		amount_with_gst = amount + gst_amount
+
+	return amount_with_gst
 
 
 def record_payment(
-	address,
-	doctype,
-	docname,
-	amount,
-	currency,
-	amount_with_gst=0,
-	payment_for_certificate=0,
+	address: dict,
+	doctype: str,
+	docname: str,
+	amount: float,
+	original_amount: float,
+	currency: str,
+	amount_with_gst: float = 0,
+	discount_amount: float = 0,
+	payment_for_certificate: int = 0,
+	coupon_code: str | None = None,
+	coupon: str | None = None,
 ):
 	address = frappe._dict(address)
 	address_name = save_address(address)
@@ -80,6 +172,7 @@ def record_payment(
 			"address": address_name,
 			"amount": amount,
 			"currency": currency,
+			"discount_amount": discount_amount,
 			"amount_with_gst": amount_with_gst,
 			"gstin": address.gstin,
 			"pan": address.pan,
@@ -87,13 +180,33 @@ def record_payment(
 			"payment_for_document_type": doctype,
 			"payment_for_document": docname,
 			"payment_for_certificate": payment_for_certificate,
+			"member_consent": address.member_consent,
 		}
 	)
+	if coupon_code:
+		payment_doc.update(
+			{
+				"coupon": coupon,
+				"coupon_code": coupon_code,
+				"discount_amount": discount_amount,
+				"original_amount": original_amount,
+			}
+		)
+
 	payment_doc.save(ignore_permissions=True)
 	return payment_doc
 
 
-def save_address(address):
+def get_redirect_url(doctype: str, docname: str, payment_for_certificate: int) -> str:
+	if int(payment_for_certificate):
+		return get_lms_route(f"courses/{docname}/certification")
+	elif doctype == "LMS Course":
+		return get_lms_route(f"courses/{docname}")
+	else:
+		return get_lms_route(f"batches/{docname}")
+
+
+def save_address(address: dict) -> str:
 	filters = {"email_id": frappe.session.user}
 	exists = frappe.db.exists("Address", filters)
 	if exists:

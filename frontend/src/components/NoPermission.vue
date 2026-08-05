@@ -1,42 +1,50 @@
 <template>
-	<div class="border rounded-md w-1/3 mx-auto my-32">
-		<div class="border-b px-5 py-3 font-medium">
-			<span
-				class="inline-flex items-center before:bg-surface-red-5 before:w-2 before:h-2 before:rounded-md before:mr-2"
-			></span>
-			{{ __('Not Permitted') }}
-		</div>
-		<div v-if="user.data" class="px-5 py-3">
-			<div>
-				{{ __('You do not have permission to access this page.') }}
+	<div class="bg-surface-base w-full h-full">
+		<div class="w-fit mx-auto mt-56 text-center p-4">
+			<h1 class="text-4xl-semibold text-ink-gray-5 pb-4 mb-2 border-b">
+				{{ __('Not Permitted') }}
+			</h1>
+			<div v-if="user.data" class="px-5 py-3">
+				<div class="text-ink-gray-5">
+					{{ __('You do not have permission to access this page.') }}
+				</div>
+				<router-link
+					:to="{
+						name: 'Courses',
+					}"
+				>
+					<Button variant="solid" class="mt-2 w-full">
+						{{ __('Checkout Courses') }}
+					</Button>
+				</router-link>
 			</div>
-			<router-link
-				:to="{
-					name: 'Courses',
-				}"
-			>
-				<Button variant="solid" class="mt-2">
-					{{ __('Checkout Courses') }}
+			<div class="px-5 py-3">
+				<div class="text-ink-gray-5">
+					{{ __('You are not permitted to access this page.') }}
+				</div>
+				<Button @click="redirectToLogin()" class="mt-4 w-full" variant="solid">
+					{{ __('Login') }}
 				</Button>
-			</router-link>
-		</div>
-		<div class="px-5 py-3">
-			<div>
-				{{ __('Please login to access this page.') }}
 			</div>
-			<Button @click="redirectToLogin()" class="mt-4">
-				{{ __('Login') }}
-			</Button>
 		</div>
 	</div>
 </template>
 <script setup>
 import { inject } from 'vue'
-import { Button } from 'frappe-ui'
+import { Button, usePageMeta } from 'frappe-ui'
+import { sessionStore } from '../stores/session'
 
 const user = inject('$user')
+const { brand } = sessionStore()
 
 const redirectToLogin = () => {
 	window.location.href = '/login'
 }
+
+usePageMeta(() => {
+	return {
+		title: __('Not Permitted'),
+		icon: brand.favicon,
+	}
+})
 </script>

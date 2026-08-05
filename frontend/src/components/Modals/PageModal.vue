@@ -1,31 +1,30 @@
 <template>
 	<Dialog
-		v-model="show"
-		class="text-base"
-		:options="{
-			title: __('Add web page to sidebar'),
-			size: 'lg',
-			actions: [
-				{
-					label: 'Add',
-					variant: 'solid',
-					onClick: (close) => {
-						addWebPage(close)
-					},
+		v-model:open="show"
+		:title="__('Add web page to sidebar')"
+		size="lg"
+		:actions="[
+			{
+				label: 'Add',
+				variant: 'solid',
+				onClick: ({ close }) => {
+					addWebPage(close)
 				},
-			],
-		}"
+			},
+		]"
 	>
-		<template #body-content>
-			<Link
-				v-model="page.webpage"
-				doctype="Web Page"
-				:label="__('Web Page')"
-				:filters="{
-					published: 1,
-				}"
-			/>
-			<IconPicker v-model="page.icon" :label="__('Icon')" class="mt-4" />
+		<template #default>
+			<div class="text-base">
+				<Link
+					v-model="page.webpage"
+					doctype="Web Page"
+					:label="__('Web Page')"
+					:filters="{
+						published: 1,
+					}"
+				/>
+				<IconPicker v-model="page.icon" :label="__('Icon')" class="mt-4" />
+			</div>
 		</template>
 	</Dialog>
 </template>

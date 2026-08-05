@@ -1,61 +1,75 @@
 <template>
-	<div>
-		<div class="text-xs text-ink-gray-5 mb-2">
-			{{ label }}
-		</div>
-		<div class="overflow-x-auto border rounded-md">
-			<div
-				class="grid items-center space-x-4 p-2 border-b"
-				:style="{ gridTemplateColumns: getGridTemplateColumns() }"
-			>
+	<div class="space-y-1.5">
+		<InputLabel
+			v-if="label"
+			:id="labelId"
+			:label="label"
+			:required="required"
+		/>
+		<div class="overflow-visible border border-outline-elevation-2 rounded-md">
+			<div class="overflow-x-auto">
 				<div
-					v-for="(column, index) in columns"
-					:key="index"
-					class="text-sm text-ink-gray-5"
+					class="grid items-center gap-x-4 p-2 border-b border-outline-elevation-2"
+					:style="{ gridTemplateColumns: getGridTemplateColumns() }"
 				>
-					{{ column }}
-				</div>
-				<div></div>
-			</div>
-			<div
-				v-for="(row, rowIndex) in rows"
-				:key="rowIndex"
-				class="grid items-center space-x-4 p-2"
-				:style="{ gridTemplateColumns: getGridTemplateColumns() }"
-			>
-				<template v-for="key in Object.keys(row)" :key="key">
-					<input
-						v-if="showKey(key)"
-						v-model="row[key]"
-						class="py-1.5 px-2 border-none focus:ring-0 focus:border focus:border-gray-300 focus:bg-surface-gray-2 rounded-sm text-sm focus:outline-none"
-					/>
-				</template>
-
-				<div class="relative" ref="menuRef">
-					<Button
-						variant="ghost"
-						@click="(event: MouseEvent) => toggleMenu(rowIndex, event)"
-					>
-						<template #icon>
-							<Ellipsis
-								class="size-4 text-ink-gray-7 stroke-1.5 cursor-pointer"
-							/>
-						</template>
-					</Button>
-
 					<div
-						v-if="menuOpenIndex === rowIndex"
-						class="absolute right-[30px] top-5 mt-1 w-32 bg-surface-white border border-outline-gray-1 rounded-md shadow-sm"
+						v-for="(column, index) in columns"
+						:key="index"
+						class="text-sm text-ink-gray-5"
 					>
-						<button
-							@click="deleteRow(rowIndex)"
-							class="flex items-center space-x-2 w-full text-left px-3 py-2 text-sm text-ink-red-3"
+						{{ column }}
+					</div>
+					<div></div>
+				</div>
+				<div
+					v-for="(row, rowIndex) in rows"
+					:key="rowIndex"
+					class="grid items-center gap-x-4 p-2"
+					:style="{ gridTemplateColumns: getGridTemplateColumns() }"
+				>
+					<template v-for="key in Object.keys(row)" :key="key">
+						<input
+							v-if="showKey(key)"
+							v-model="row[key]"
+							:aria-label="columnLabel(key)"
+							class="py-1.5 px-2 w-full border-none bg-transparent text-ink-gray-8 focus:ring-0 focus:border focus:border-outline-gray-3 focus:bg-surface-gray-2 rounded-md text-sm focus:outline-none"
+						/>
+					</template>
+
+					<div class="relative">
+						<Button
+							variant="ghost"
+							:label="__('Row actions')"
+							@click="(event: MouseEvent) => toggleMenu(rowIndex, event)"
 						>
-							<Trash2 class="size-4 stroke-1.5" />
-							<span>
-								{{ __('Delete') }}
-							</span>
-						</button>
+							<template #icon>
+								<span
+									class="lucide-ellipsis size-4 text-ink-gray-7 cursor-pointer"
+								/>
+							</template>
+						</Button>
+
+						<div
+							v-if="menuOpenIndex === rowIndex"
+							ref="menuRef"
+							class="absolute end-0 w-32 z-50 bg-surface-elevation-2 border border-outline-elevation-2 rounded-md shadow-sm"
+							:class="
+								rowIndex == (rows?.length ?? 0) - 1
+									? 'bottom-full mb-1'
+									: 'top-full mt-1'
+							"
+						>
+							<button
+								type="button"
+								@click="deleteRow(rowIndex)"
+								class="flex items-center gap-x-2 w-full text-start px-3 py-2 text-sm text-ink-red-6"
+							>
+								<span class="lucide-trash-2 size-4" />
+								<span>
+									{{ __('Delete') }}
+								</span>
+							</button>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -64,26 +78,39 @@
 		<div class="mt-2">
 			<Button @click="addRow">
 				<template #prefix>
-					<Plus class="size-4 text-ink-gray-7" />
+					<span class="lucide-plus size-4 text-ink-gray-7" />
 				</template>
 				{{ __('Add Row') }}
 			</Button>
 		</div>
+		<InputDescription
+			v-if="showDescription"
+			:id="descriptionId"
+			:description="description"
+		/>
+		<InputError v-if="hasError" :id="errorMessageId" :lines="errorLines" />
 	</div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { Button } from 'frappe-ui'
-import { Ellipsis, Plus, Trash2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
+import {
+	InputDescription,
+	InputError,
+	InputLabel,
+	useInputLabeling,
+} from '@/components/Form/labeling'
 
-const rows = defineModel<Cell[][]>()
+const rows = defineModel<Record<string, string>[]>()
 const menuRef = ref(null)
 const menuOpenIndex = ref<number | null>(null)
 const menuTopPosition = ref<string>('')
+const menuLeftPosition = ref('0px')
+
 const emit = defineEmits<{
-	(e: 'update:modelValue', value: Cell[][]): void
+	(e: 'update:modelValue', value: Record<string, string>[]): void
 }>()
 
 type Cell = {
@@ -93,19 +120,30 @@ type Cell = {
 
 const props = withDefaults(
 	defineProps<{
-		modelValue?: Cell[][]
+		modelValue?: Record<string, string>[]
 		columns?: string[]
 		label?: string
+		description?: string
+		error?: string
+		required?: boolean
 	}>(),
 	{
-		columns: [],
+		columns: () => [] as string[],
 	}
 )
 
 const columns = ref(props.columns)
+const {
+	labelId,
+	descriptionId,
+	errorMessageId,
+	hasError,
+	errorLines,
+	showDescription,
+} = useInputLabeling(props)
 
 watch(rows, () => {
-	if (rows.value?.length < 1) {
+	if (rows.value && rows.value.length < 1) {
 		addRow()
 	}
 })
@@ -116,15 +154,28 @@ const addRow = () => {
 	}
 	let newRow: { [key: string]: string } = {}
 	columns.value.forEach((column: any) => {
-		newRow[column.toLowerCase().split(' ').join('_')] = ''
+		newRow[keyFor(column)] = ''
 	})
 	rows.value.push(newRow)
+	focusNewRowInput()
 	emit('update:modelValue', rows.value)
 }
 
+const focusNewRowInput = () => {
+	nextTick(() => {
+		const rowElements = document.querySelectorAll('.overflow-x-auto .grid')[
+			rows.value!.length
+		]
+		const firstInput = rowElements.querySelector('input')
+		if (firstInput) {
+			;(firstInput as HTMLInputElement).focus()
+		}
+	})
+}
+
 const deleteRow = (index: number) => {
-	rows.value.splice(index, 1)
-	emit('update:modelValue', rows.value)
+	rows.value?.splice(index, 1)
+	emit('update:modelValue', rows.value ?? [])
 }
 
 const getGridTemplateColumns = () => {
@@ -133,17 +184,19 @@ const getGridTemplateColumns = () => {
 
 const toggleMenu = (index: number, event: MouseEvent) => {
 	menuOpenIndex.value = menuOpenIndex.value === index ? null : index
-	menuTopPosition.value = `${event.clientY + 10}px`
 }
 
 onClickOutside(menuRef, () => {
 	menuOpenIndex.value = null
 })
 
+const keyFor = (column: string) => column.toLowerCase().split(' ').join('_')
+
 const showKey = (key: string) => {
-	let columnsLower = columns.value.map((col) =>
-		col.toLowerCase().split(' ').join('_')
-	)
-	return columnsLower.includes(key)
+	return columns.value.some((col) => keyFor(col) === key)
+}
+
+const columnLabel = (key: string) => {
+	return __(columns.value.find((col) => keyFor(col) === key) || key)
 }
 </script>

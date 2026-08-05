@@ -1,15 +1,22 @@
 <template>
 	<NoPermission v-if="!$user.data" />
 	<div v-else-if="profile.data">
-		<header
-			class="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
-		>
-			<Breadcrumbs class="h-7" :items="breadcrumbs" />
-		</header>
+		<PageHeader :breadcrumbs="breadcrumbs">
+			<template #actions>
+				<HeaderButton
+					v-if="isSessionUser()"
+					variant="ghost"
+					:label="__('Refresh session')"
+					icon="lucide-refresh-ccw"
+					@click="reloadUser()"
+				/>
+			</template>
+		</PageHeader>
 		<div class="group relative h-[130px] w-full">
 			<img
 				v-if="profile.data.cover_image"
 				:src="profile.data.cover_image"
+				alt=""
 				class="h-[130px] w-full object-cover object-center"
 			/>
 			<div
@@ -18,20 +25,16 @@
 				class="h-[130px] w-full"
 			></div>
 			<div
-				class="absolute bottom-[30%] md:bottom-0 left-[50%] mb-4 flex -translate-x-1/2 space-x-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+				class="absolute bottom-[30%] md:bottom-0 start-[50%] mb-4 flex -translate-x-1/2 gap-x-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
 				v-if="isSessionUser()"
 			>
 				<EditCoverImage
 					@select="(imageUrl) => coverImage.submit({ url: imageUrl })"
 				>
-					<template v-slot="{ togglePopover }">
-						<Button
-							v-if="!readOnlyMode"
-							variant="outline"
-							@click="togglePopover()"
-						>
+					<template #default>
+						<Button v-if="!readOnlyMode" variant="outline">
 							<template #prefix>
-								<Edit class="w-4 h-4 stroke-1.5 text-ink-gray-7" />
+								<span class="lucide-edit size-4 text-ink-gray-7" />
 							</template>
 							{{ __('Edit') }}
 						</Button>
@@ -42,47 +45,113 @@
 		<div class="mx-auto -mt-10 md:-mt-4 max-w-4xl translate-x-0 px-5">
 			<div class="flex flex-col md:flex-row items-center">
 				<div>
-					<img
-						v-if="profile.data.user_image"
-						:src="profile.data.user_image"
-						class="object-cover h-[100px] w-[100px] rounded-full border-4 border-white object-cover"
-					/>
-					<UserAvatar
-						v-else
-						:user="profile.data"
-						class="object-cover h-[100px] w-[100px] rounded-full border-4 border-white object-cover"
-					/>
+					<div class="relative">
+						<img
+							v-if="profile.data.user_image"
+							:src="profile.data.user_image"
+							:alt="profile.data.full_name"
+							class="object-cover h-[100px] w-[100px] rounded-full border-4 border-white object-cover"
+						/>
+						<div
+							v-else
+							class="flex items-center justify-center h-[100px] w-[100px] rounded-full border-4 border-white bg-surface-gray-2 text-4xl-semibold text-ink-gray-7"
+						>
+							{{ profile.data.full_name.charAt(0).toUpperCase() }}
+						</div>
+						<Tooltip
+							v-if="profile.data.open_to"
+							:text="
+								profile.data.open_to === 'Work'
+									? __('Open to Work')
+									: __('Hiring')
+							"
+							placement="right"
+						>
+							<div
+								class="absolute bottom-3 end-1 p-0.5 bg-surface-base rounded-full"
+							>
+								<div
+									class="rounded-full w-fit"
+									:class="
+										profile.data.open_to === 'Work'
+											? 'bg-surface-green-3'
+											: 'bg-purple-500'
+									"
+								>
+									<span class="lucide-badge-check text-ink-base size-5" />
+								</div>
+							</div>
+						</Tooltip>
+					</div>
 				</div>
-				<div class="ml-6">
-					<h2 class="mt-2 text-3xl font-semibold text-ink-gray-9">
+				<div class="ms-6 mt-5">
+					<h1 class="text-4xl-semibold text-ink-gray-9">
 						{{ profile.data.full_name }}
-					</h2>
-					<div class="mt-2 text-base text-ink-gray-7">
+					</h1>
+					<div class="text-base text-ink-gray-7 mt-1">
 						{{ profile.data.headline }}
+					</div>
+					<div class="flex items-center gap-x-4 mt-2">
+						<a
+							v-if="profile.data.twitter"
+							:href="profile.data.twitter"
+							target="_blank"
+							rel="noopener noreferrer"
+							:aria-label="__('Twitter')"
+						>
+							<Twitter class="size-4 text-ink-gray-5 cursor-pointer" />
+						</a>
+						<a
+							v-if="profile.data.linkedin"
+							:href="profile.data.linkedin"
+							target="_blank"
+							rel="noopener noreferrer"
+							:aria-label="__('LinkedIn')"
+						>
+							<Linkedin class="size-4 text-ink-gray-5 cursor-pointer" />
+						</a>
+						<a
+							v-if="profile.data.github"
+							:href="profile.data.github"
+							target="_blank"
+							rel="noopener noreferrer"
+							:aria-label="__('GitHub')"
+						>
+							<Github class="size-4 text-ink-gray-5 cursor-pointer" />
+						</a>
 					</div>
 				</div>
 				<Button
 					v-if="isSessionUser() && !readOnlyMode"
-					class="mt-3 sm:mt-0 md:ml-auto"
+					class="mt-3 sm:mt-0 md:ms-auto"
 					@click="editProfile()"
 				>
 					<template #prefix>
-						<Edit class="w-4 h-4 stroke-1.5 text-ink-gray-7" />
+						<span class="lucide-edit size-4 text-ink-gray-7" />
 					</template>
 					{{ __('Edit Profile') }}
 				</Button>
 			</div>
 
-			<div class="mb-4 mt-6">
+			<!-- On a phone the strip spans the row, so the pills have to grow
+			     with it or the grey track shows through past the last tab.
+			     `grow` shares the slack out instead of forcing equal columns,
+			     which would truncate the longer labels at 390px. -->
+			<div class="mb-4 mt-10">
 				<TabButtons
-					class="inline-block"
-					:buttons="getTabButtons()"
+					:class="
+						isMobile
+							? 'flex w-full [&>div]:w-full [&_button]:min-w-0 [&_button]:grow [&_button>span]:w-full'
+							: 'inline-block'
+					"
+					:options="getTabButtons()"
 					v-model="activeTab"
 				/>
 			</div>
 			<router-view :profile="profile" :key="profile.data?.name" />
 		</div>
 	</div>
+	<NotFound v-else-if="(profile.fetched || profile.error) && !profile.data" />
 	<EditProfile
 		v-model="showProfileModal"
 		v-model:reloadProfile="profile"
@@ -91,19 +160,25 @@
 </template>
 <script setup>
 import {
-	Breadcrumbs,
-	createResource,
 	Button,
+	call,
+	createResource,
 	TabButtons,
+	Tooltip,
+	toast,
 	usePageMeta,
 } from 'frappe-ui'
 import { computed, inject, watch, ref, onMounted, watchEffect } from 'vue'
+import PageHeader from '@/components/Layouts/PageHeader.vue'
+import HeaderButton from '@/components/HeaderButton.vue'
 import { sessionStore } from '@/stores/session'
-import { Edit } from 'lucide-vue-next'
-import UserAvatar from '@/components/UserAvatar.vue'
+import { Github, Linkedin, Twitter } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
-import NoPermission from '@/components/NoPermission.vue'
 import { convertToTitleCase } from '@/utils'
+import { useScreenSize } from '@/utils/composables'
+import UserAvatar from '@/components/UserAvatar.vue'
+import NoPermission from '@/components/NoPermission.vue'
+import NotFound from '@/pages/NotFound.vue'
 import EditProfile from '@/components/Modals/EditProfile.vue'
 import EditCoverImage from '@/components/Modals/EditCoverImage.vue'
 
@@ -114,6 +189,7 @@ const router = useRouter()
 const activeTab = ref('')
 const showProfileModal = ref(false)
 const readOnlyMode = window.read_only_mode
+const { isMobile } = useScreenSize()
 
 const props = defineProps({
 	username: {
@@ -124,18 +200,14 @@ const props = defineProps({
 
 onMounted(() => {
 	if ($user.data) profile.reload()
-
 	setActiveTab()
 })
 
 const profile = createResource({
-	url: 'frappe.client.get',
-	makeParams(values) {
+	url: 'lms.lms.api.get_profile_details',
+	makeParams() {
 		return {
-			doctype: 'User',
-			filters: {
-				username: props.username,
-			},
+			username: props.username,
 		}
 	},
 })
@@ -191,27 +263,58 @@ const editProfile = () => {
 }
 
 const isSessionUser = () => {
-	return $user.data?.email === profile.data?.email
+	return $user.data?.name === profile.data?.name
+}
+
+const currentUserHasHigherAccess = () => {
+	return $user.data?.is_evaluator || $user.data?.is_moderator
+}
+
+const isEvaluatorOrModerator = () => {
+	return (
+		profile.data?.roles?.includes('Batch Evaluator') ||
+		profile.data?.roles?.includes('Moderator')
+	)
 }
 
 const getTabButtons = () => {
-	let buttons = [{ label: 'About' }, { label: 'Certificates' }]
-	if ($user.data?.is_moderator) buttons.push({ label: 'Roles' })
-	if (
-		isSessionUser() &&
-		($user.data?.is_evaluator || $user.data?.is_moderator)
-	) {
-		buttons.push({ label: 'Slots' })
-		buttons.push({ label: 'Schedule' })
+	let buttons = [
+		{ label: __('About'), value: 'About' },
+		{ label: __('Certificates'), value: 'Certificates' },
+	]
+	if ($user.data?.is_moderator) {
+		buttons.push({ label: __('Roles'), value: 'Roles' })
 	}
 
+	if (currentUserHasHigherAccess() && isEvaluatorOrModerator()) {
+		buttons.push({ label: __('Slots'), value: 'Slots' })
+		buttons.push({ label: __('Schedule'), value: 'Schedule' })
+	}
 	return buttons
+}
+
+const reloadUser = () => {
+	call('frappe.sessions.clear')
+		.then(() => {
+			$user.reload().then(() => {
+				profile.reload()
+				toast.success(__('Session refreshed successfully'))
+			})
+		})
+		.catch((err) => {
+			toast.error(__('Failed to refresh session'))
+			console.error(err)
+		})
+}
+
+const navigateTo = (url) => {
+	window.open(url, '_blank')
 }
 
 const breadcrumbs = computed(() => {
 	let crumbs = [
 		{
-			label: 'People',
+			label: __('People'),
 		},
 		{
 			label: profile.data?.full_name,

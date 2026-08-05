@@ -12,8 +12,8 @@
   "country",
   "column_break_5",
   "type",
+  "work_mode",
   "status",
-  "disabled",
   "section_break_6",
   "company_name",
   "company_website",
@@ -97,12 +97,6 @@
    "reqd": 1
   },
   {
-   "default": "0",
-   "fieldname": "disabled",
-   "fieldtype": "Check",
-   "label": "Disabled"
-  },
-  {
    "fieldname": "company_email_address",
    "fieldtype": "Data",
    "label": "Company Email Address",
@@ -119,6 +113,12 @@
    "label": "Country",
    "options": "Country",
    "reqd": 1
+  },
+  {
+   "fieldname": "work_mode",
+   "fieldtype": "Select",
+   "label": "Work Mode",
+   "options": "\nRemote\nHybrid\nOn-site"
   }
  ],
  "grid_page_length": 50,
@@ -130,7 +130,7 @@
   }
  ],
  "make_attachments_public": 1,
- "modified": "2025-04-24 14:34:35.920242",
+ "modified": "2026-02-19 14:26:14.027340",
  "modified_by": "sayali@frappe.io",
  "module": "Job",
  "name": "Job Opportunity",
@@ -150,23 +150,15 @@
    "write": 1
   },
   {
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "LMS Student",
-   "select": 1,
-   "share": 1
-  },
-  {
    "create": 1,
    "email": 1,
    "export": 1,
    "if_owner": 1,
    "print": 1,
+   "read": 1,
    "report": 1,
    "role": "LMS Student",
+   "select": 1,
    "share": 1,
    "write": 1
   }

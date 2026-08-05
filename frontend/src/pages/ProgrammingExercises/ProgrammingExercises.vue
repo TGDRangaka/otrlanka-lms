@@ -1,17 +1,30 @@
 <template>
-	<header
-		class="sticky flex items-center justify-between top-0 z-10 border-b bg-surface-white px-3 py-2.5 sm:px-5"
+	<ListPage
+		:breadcrumbs="breadcrumbs"
+		:title="__('{0} Exercises').format(totalExercises.data || 0)"
+		layout="list"
+		:columns="columns"
+		:rows="exercises.data || []"
+		:list-options="listOptions"
+		:total-count="totalExercises.data ?? 0"
+		:loading="exercises.list.loading"
+		:has-next-page="exercises.hasNextPage"
+		v-model:page-length="pageLength"
+		empty-name="Programming Exercises"
+		empty-icon="lucide-code"
+		@load-more="exercises.next()"
 	>
-		<Breadcrumbs :items="breadcrumbs" />
-		<div class="space-x-2">
+		<template #actions>
 			<router-link
+				v-if="exercises.data?.length"
+				class="hidden md:block"
 				:to="{
 					name: 'ProgrammingExerciseSubmissions',
 				}"
 			>
-				<Button>
+				<Button class="text-p-base-medium">
 					<template #prefix>
-						<ClipboardList class="size-4 stroke-1.5" />
+						<span class="lucide-clipboard-list size-4" />
 					</template>
 					{{ __('Check All Submissions') }}
 				</Button>
@@ -27,98 +40,92 @@
 				"
 			>
 				<template #prefix>
-					<Plus class="h-4 w-4 stroke-1.5" />
+					<span class="lucide-plus size-4" />
 				</template>
 				{{ __('Create') }}
 			</Button>
-		</div>
-	</header>
-	<div class="md:w-4/5 md:mx-auto p-5">
-		<div class="flex items-center justify-between mb-5">
-			<div v-if="exerciseCount" class="text-lg font-semibold text-ink-gray-9">
-				{{ __('{0} Exercises').format(exerciseCount) }}
-			</div>
-			<div
-				v-if="exercises.data?.length || exerciseCount > 0"
-				class="grid grid-cols-2 gap-5"
-			>
-				<!-- <FormControl
-                    v-model="titleFilter"
-                    :placeholder="__('Search by title')"
-                />
-                <FormControl
-                    v-model="typeFilter"
-                    type="select"
-                    :options="assignmentTypes"
-                    :placeholder="__('Type')"
-                /> -->
-			</div>
-		</div>
+		</template>
 
-		<div
-			v-if="exercises.data?.length"
-			class="grid grid-cols-1 md:grid-cols-3 gap-4"
-		>
-			<div
-				v-for="exercise in exercises.data"
-				:key="exercise.name"
-				@click="
-					() => {
-						exerciseID = exercise.name
-						showForm = true
-					}
-				"
-				class="flex flex-col border rounded-md p-3 h-full hover:border-outline-gray-3 space-y-2 cursor-pointer"
+		<template #filters>
+			<FormControl
+				v-model="titleFilter"
+				:placeholder="__('Search')"
+				:aria-label="__('Search')"
+				@input="updateList"
 			>
-				<div class="text-lg font-semibold text-ink-gray-9">
-					{{ exercise.title }}
-				</div>
-				<div class="text-sm text-ink-gray-7">
-					{{ exercise.language }}
-				</div>
+				<template #prefix>
+					<span class="lucide-search size-4 text-ink-gray-5" />
+				</template>
+			</FormControl>
+			<Select
+				v-model="languageFilter"
+				:options="languages"
+				:placeholder="__('Type')"
+				@update:modelValue="updateList"
+			/>
+		</template>
+
+		<template #cell="{ column, value }">
+			<div v-if="column.key == 'modified'" class="text-sm text-ink-gray-5">
+				<!-- A cell value is `unknown`: a row is a bag of fields and only
+				     the branch it lands in knows what one holds. -->
+				{{ dayjs(value as string).format('MMM D, YYYY') }}
 			</div>
-		</div>
-		<EmptyState v-else type="Programming Exercises" />
-		<div
-			v-if="exercises.data && exercises.hasNextPage"
-			class="flex justify-center my-5"
-		>
-			<Button @click="exercises.next()">
-				{{ __('Load More') }}
+			<div v-else>{{ value }}</div>
+		</template>
+
+		<template #selection-actions="{ unselectAll, selections }">
+			<Button
+				variant="ghost"
+				:label="__('Delete')"
+				@click="showDeleteConfirmation(selections, unselectAll)"
+			>
+				<span class="lucide-trash-2 size-4" />
 			</Button>
-		</div>
-	</div>
+		</template>
+	</ListPage>
+
 	<ProgrammingExerciseForm
 		v-model="showForm"
-		:exerciseID="exerciseID"
 		v-model:exercises="exercises"
+		:exerciseID="exerciseID"
+		v-model:totalExercises="totalExercises"
 	/>
 </template>
 <script setup lang="ts">
-import { computed, inject, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, inject, onMounted, ref } from 'vue'
+import type dayjsType from 'dayjs'
 import {
-	Breadcrumbs,
 	Button,
 	call,
+	createResource,
 	createListResource,
+	FormControl,
+	toast,
 	usePageMeta,
 } from 'frappe-ui'
-import { ClipboardList, Plus } from 'lucide-vue-next'
+import ListPage from '@/components/Layouts/ListPage.vue'
+import Select from '@/components/Controls/Select.vue'
+import type { ListRow } from '@/types'
+
 import { sessionStore } from '@/stores/session'
 import { useRouter } from 'vue-router'
 import ProgrammingExerciseForm from '@/pages/ProgrammingExercises/ProgrammingExerciseForm.vue'
 
-const exerciseCount = ref<number>(0)
 const readOnlyMode = window.read_only_mode
 const { brand } = sessionStore()
 const showForm = ref<boolean>(false)
-const exerciseID = ref<string | null>('new')
+const exerciseID = ref<string>('new')
 const user = inject<any>('$user')
+const dayjs = inject<typeof dayjsType>('$dayjs')!
+const titleFilter = ref<string>('')
+const languageFilter = ref<string>('')
 const router = useRouter()
+const app = getCurrentInstance()
+const { $dialog } = app?.appContext.config.globalProperties
 
 onMounted(() => {
 	validatePermissions()
-	getExerciseCount()
 })
 
 const validatePermissions = () => {
@@ -133,24 +140,141 @@ const validatePermissions = () => {
 	}
 }
 
-const getExerciseCount = () => {
-	call('frappe.client.get_count', {
-		doctype: 'LMS Programming Exercise',
-	})
-		.then((count: number) => {
-			exerciseCount.value = count
-		})
-		.catch((error: any) => {
-			console.error('Error fetching exercise count:', error)
-		})
-}
-
 const exercises = createListResource({
 	doctype: 'LMS Programming Exercise',
 	cache: ['programmingExercises'],
-	fields: ['name', 'title', 'language', 'problem_statement'],
+	fields: ['name', 'title', 'language', 'problem_statement', 'modified'],
 	auto: true,
 	orderBy: 'modified desc',
+	pageLength: 24,
+})
+
+const listOptions = computed(() => ({
+	showTooltip: false,
+	selectable: true,
+	onRowClick: (row: ListRow) => {
+		if (readOnlyMode) return
+		exerciseID.value = row.name as string
+		showForm.value = true
+	},
+}))
+
+const updateList = () => {
+	let filters = getFilters()
+	exercises.update({
+		filters: filters,
+	})
+	exercises.reload()
+	totalExercises.update({
+		filters: filters,
+	})
+	totalExercises.reload()
+}
+
+const getFilters = () => {
+	let filters: any = {}
+	if (titleFilter.value) {
+		filters['title'] = ['like', `%${titleFilter.value}%`]
+	}
+	if (languageFilter.value && languageFilter.value.trim() !== '') {
+		filters['language'] = languageFilter.value
+	}
+	return filters
+}
+
+const showDeleteConfirmation = (
+	selections: Set<string>,
+	unselectAll: () => void
+) => {
+	$dialog({
+		title: __('Confirm Your Action'),
+		message: __(
+			'Deleting these exercises will permanently remove them from the system, along with all associated submissions. This action is irreversible. Are you sure you want to proceed?'
+		),
+		actions: [
+			{
+				label: __('Delete'),
+				theme: 'red',
+				variant: 'solid',
+				onClick(close: () => void) {
+					deleteExercises(selections, unselectAll)
+					close()
+				},
+			},
+		],
+	})
+}
+
+const deleteExercises = (selections: Set<string>, unselectAll: () => void) => {
+	Array.from(selections).forEach(async (exerciseName) => {
+		call('lms.lms.api.delete_programming_exercise', {
+			exercise: exerciseName,
+		})
+			.then(() => {
+				toast.success(__('Exercise deleted successfully'))
+				updateList()
+			})
+			.catch((error: any) => {
+				toast.error(__(error.message || error))
+				console.error('Error deleting exercise:', error)
+			})
+	})
+	unselectAll()
+}
+
+const pageLength = computed({
+	get: () => exercises.pageLength,
+	set: (value) => {
+		// reload() ignores a new pageLength while start > 0: it refetches the
+		// already loaded rows instead, so paging must be reset for it to apply.
+		exercises.update({ pageLength: value, start: 0 })
+		exercises.reload()
+	},
+})
+
+const totalExercises = createResource({
+	url: 'frappe.client.get_count',
+	params: {
+		doctype: 'LMS Programming Exercise',
+		filters: getFilters(),
+	},
+	auto: true,
+	cache: ['programming_exercises_count', user.data?.name],
+	onError(err: any) {
+		toast.error(err.messages?.[0] || err)
+		console.error(err)
+	},
+})
+
+const languages = [
+	{ label: ' ', value: ' ' },
+	{ label: 'Python', value: 'Python' },
+	{ label: 'JavaScript', value: 'JavaScript' },
+]
+
+const columns = computed(() => {
+	return [
+		{
+			label: __('Title'),
+			key: 'title',
+			width: 1,
+			icon: 'lucide-file-text',
+		},
+		{
+			label: __('Language'),
+			key: 'language',
+			width: 1,
+			align: 'left',
+			icon: 'lucide-code',
+		},
+		{
+			label: __('Updated On'),
+			key: 'modified',
+			width: 1,
+			icon: 'lucide-clock',
+			align: 'left',
+		},
+	]
 })
 
 usePageMeta(() => {

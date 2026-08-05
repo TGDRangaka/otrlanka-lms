@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ boot.lang }}" dir="{{ boot.text_direction }}">
 	<head>
 		<meta charset="UTF-8" />
 		<link rel="icon" href="{{ favicon }}" />
+		<link rel="manifest" href="/api/method/lms.lms.api.get_pwa_manifest" />
 		<link rel="apple-touch-icon" href="public/manifest/apple-icon-180.png" />
 		<meta name="mobile-web-app-capable" content="yes" />
 		<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
@@ -200,26 +201,26 @@
 			media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)"
 		/>
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>{{ title }}</title>
-		<meta name="title" content="{{ meta.title }}" />
-		<meta name="image" content="{{ meta.image }}" />
-		<meta name="description" content="{{ meta.description }}" />
-		<meta name="keywords" content="{{ meta.keywords }}" />
-		<meta property="og:title" content="{{ meta.title }}" />
-		<meta property="og:image" content="{{ meta.image }}" />
-		<meta property="og:description" content="{{ meta.description }}" />
-		<meta name="twitter:title" content="{{ meta.title }}" />
-		<meta name="twitter:image" content="{{ meta.image }}" />
-		<meta name="twitter:description" content="{{ meta.description }}" />
+		<title>{{ title | e }}</title>
+		<meta name="title" content="{{ meta.title | e }}" />
+		<meta name="image" content="{{ meta.image | e }}" />
+		<meta name="description" content="{{ meta.description | e }}" />
+		<meta name="keywords" content="{{ meta.keywords | e }}" />
+		<meta property="og:title" content="{{ meta.title | e }}" />
+		<meta property="og:image" content="{{ meta.image | e }}" />
+		<meta property="og:description" content="{{ meta.description | e }}" />
+		<meta name="twitter:title" content="{{ meta.title | e }}" />
+		<meta name="twitter:image" content="{{ meta.image | e }}" />
+		<meta name="twitter:description" content="{{ meta.description | e }}" />
 	</head>
-	<body>
+	<body class="sm:overscroll-y-none no-scrollbar">
 		<div id="app">
 			<div id="seo-content">
-				<h1>{{ meta.title }}</h1>
+				<h1>{{ meta.title | e }}</h1>
 				<p>
-					{{ meta.description }}
+					{{ meta.description | e }}
 				</p>
-				<a href="{{ meta.link }}">Know More</a>
+				<a href="{{ meta.link | e }}">Know More</a>
 			</div>
 		</div>
 		<script>

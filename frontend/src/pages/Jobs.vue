@@ -1,14 +1,21 @@
 <template>
-	<div class="">
-		<header
-			class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
-		>
-			<Breadcrumbs
-				class="h-7"
-				:items="[{ label: __('Jobs'), route: { name: 'Jobs' } }]"
-			/>
+	<ListPage
+		:breadcrumbs="breadcrumbs"
+		:title="__('{0} {1} Jobs').format(jobCount.data ?? 0, activeTab)"
+		:rows="jobs.data || []"
+		:total-count="jobCount.data ?? 0"
+		:loading="jobs.list.loading"
+		:has-next-page="jobs.hasNextPage"
+		v-model:page-length="pageLength"
+		empty-name="Job Openings"
+		empty-icon="lucide-briefcase"
+		@load-more="jobs.next()"
+	>
+		<template #actions>
 			<router-link
-				v-if="user.data?.name"
+				v-if="
+					user.data?.name && settings.data?.allow_job_posting && !readOnlyMode
+				"
 				:to="{
 					name: 'JobForm',
 					params: {
@@ -16,135 +23,200 @@
 					},
 				}"
 			>
-				<Button v-if="!readOnlyMode" variant="solid">
+				<Button variant="solid">
 					<template #prefix>
-						<Plus class="h-4 w-4" />
+						<span class="lucide-plus size-4" />
 					</template>
-					{{ __('New Job') }}
+					{{ __('Create') }}
 				</Button>
 			</router-link>
-		</header>
-		<div>
-			<div
-				class="flex flex-col lg:flex-row space-y-4 lg:space-y-0 lg:items-center justify-between w-full md:w-4/5 mx-auto p-5"
-			>
-				<div class="text-xl font-semibold text-ink-gray-7 mb-4 md:mb-0">
-					{{ __('{0} Open Jobs').format(jobCount) }}
-				</div>
+		</template>
 
-				<div
-					class="grid grid-cols-1 gap-2"
-					:class="user.data ? 'md:grid-cols-3' : 'md:grid-cols-2'"
-				>
-					<FormControl
-						type="text"
-						:placeholder="__('Search')"
-						v-model="searchQuery"
-						class="min-w-40 lg:min-w-0 lg:w-32 xl:w-40"
-						@input="updateJobs"
-					>
-						<template #prefix>
-							<Search
-								class="w-4 h-4 stroke-1.5 text-ink-gray-5"
-								name="search"
-							/>
-						</template>
-					</FormControl>
-					<Link
-						v-if="user.data"
-						doctype="Country"
-						v-model="country"
-						:placeholder="__('Country')"
-						class="min-w-40 lg:min-w-0 lg:w-32 xl:w-40"
-					/>
-					<FormControl
-						v-model="jobType"
-						type="select"
-						:options="jobTypes"
-						class="min-w-40 lg:min-w-0 lg:w-32 xl:w-40"
-						:placeholder="__('Type')"
-						@change="updateJobs"
-					/>
-				</div>
-			</div>
-			<div v-if="jobs.data?.length" class="w-full md:w-4/5 mx-auto p-5 pt-0">
-				<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-					<router-link
-						v-for="job in jobs.data"
-						:to="{
-							name: 'JobDetail',
-							params: { job: job.name },
-						}"
-						:key="job.name"
-					>
-						<JobCard :job="job" />
-					</router-link>
-				</div>
-			</div>
-			<EmptyState v-else type="Job Openings" />
-		</div>
-	</div>
+		<template #filters>
+			<TabButtons
+				v-if="tabs.length > 1"
+				v-model="activeTab"
+				:options="tabs"
+				class="!w-fit shrink-0"
+				@change="updateJobs"
+			/>
+			<FormControl
+				type="text"
+				:placeholder="__('Search')"
+				:aria-label="__('Search jobs')"
+				v-model="searchQuery"
+				@input="updateJobs"
+			>
+				<template #prefix>
+					<span class="lucide-search size-4 text-ink-gray-5" />
+				</template>
+			</FormControl>
+			<Link
+				v-if="user.data"
+				doctype="Country"
+				v-model="country"
+				:placeholder="__('Country')"
+			/>
+			<Select
+				v-model="jobType"
+				:options="jobTypes"
+				:placeholder="__('Type')"
+				@update:modelValue="updateJobs"
+			/>
+			<Select
+				v-model="workMode"
+				:options="workModes"
+				:placeholder="__('Work Mode')"
+				@update:modelValue="updateJobs"
+			/>
+		</template>
+
+		<template #card="{ row }">
+			<router-link
+				:to="{
+					name: 'JobDetail',
+					params: { job: row.name },
+				}"
+			>
+				<JobCard :job="row" />
+			</router-link>
+		</template>
+	</ListPage>
 </template>
 <script setup>
 import {
 	Button,
-	Breadcrumbs,
 	call,
+	createListResource,
 	createResource,
 	FormControl,
+	TabButtons,
 	usePageMeta,
 } from 'frappe-ui'
-import { Plus, Search } from 'lucide-vue-next'
-import { sessionStore } from '../stores/session'
+import { sessionStore } from '@/stores/session'
+import { useSettings } from '@/stores/settings'
 import { inject, computed, ref, onMounted, watch } from 'vue'
 import JobCard from '@/components/JobCard.vue'
 import Link from '@/components/Controls/Link.vue'
-import EmptyState from '@/components/EmptyState.vue'
+import Select from '@/components/Controls/Select.vue'
+import ListPage from '@/components/Layouts/ListPage.vue'
 
 const user = inject('$user')
 const jobType = ref(null)
+const workMode = ref(null)
 const { brand } = sessionStore()
+const { settings } = useSettings()
 const searchQuery = ref('')
 const country = ref(null)
 const filters = ref({})
 const orFilters = ref({})
-const jobCount = ref(0)
+const closedJobs = ref(0)
+const activeTab = ref('Open')
 const readOnlyMode = window.read_only_mode
 
 onMounted(() => {
+	getClosedJobCount()
+	setFiltersFromURL()
+	updateJobs()
+})
+
+const isModerator = computed(() => {
+	return user.data?.is_moderator
+})
+
+const getClosedJobCount = () => {
+	if (!user.data?.name) return
+
+	const filters = {
+		status: 'Closed',
+	}
+
+	if (!isModerator.value) {
+		filters.owner = user.data?.name
+	}
+
+	call('frappe.client.get_count', {
+		doctype: 'Job Opportunity',
+		filters: filters,
+	}).then((count) => {
+		closedJobs.value = count
+	})
+}
+
+const jobCount = createResource({
+	url: 'lms.lms.api.get_job_opportunities_count',
+	cache: ['jobCount'],
+	makeParams() {
+		return {
+			filters: filters.value,
+			or_filters: orFilters.value,
+		}
+	},
+})
+
+const setFiltersFromURL = () => {
 	let queries = new URLSearchParams(location.search)
 	if (queries.has('type')) {
 		jobType.value = queries.get('type')
 	}
-	updateJobs()
+	if (queries.has('work_mode')) {
+		workMode.value = queries.get('work_mode')
+	}
+}
+
+const jobs = createListResource({
+	url: 'lms.lms.api.get_job_opportunities',
+	doctype: 'Job Opportunity',
+	start: 0,
+	cache: ['jobs'],
+	pageLength: 24,
 })
 
-const jobs = createResource({
-	url: 'lms.lms.api.get_job_opportunities',
-	cache: ['jobs'],
+const pageLength = computed({
+	get: () => jobs.pageLength,
+	set: (value) => {
+		// reload() ignores a new pageLength while start > 0: it refetches the
+		// already loaded rows instead, so paging must be reset for it to apply.
+		jobs.update({ pageLength: value, start: 0 })
+		jobs.reload()
+	},
 })
 
 const updateJobs = () => {
 	updateFilters()
 	jobs.update({
-		params: {
-			filters: filters.value,
-			orFilters: orFilters.value,
-		},
+		filters: filters.value,
+		orFilters: orFilters.value,
 	})
 	jobs.reload()
+	jobCount.reload()
 }
 
 const updateFilters = () => {
-	filters.value.status = 'Open'
-	filters.value.disabled = 0
+	filters.value.status = activeTab.value === 'Open' ? 'Open' : 'Closed'
+	updateJobTypeFilter()
+	updateWorkModeFilter()
+	updateSearchQueryFilter()
+	updateCountryFilter()
+}
 
-	if (jobType.value) {
+const updateJobTypeFilter = () => {
+	if (jobType.value && jobType.value !== ' ') {
 		filters.value.type = jobType.value
 	} else {
 		delete filters.value.type
 	}
+}
 
+const updateWorkModeFilter = () => {
+	if (workMode.value && workMode.value !== ' ') {
+		filters.value.work_mode = workMode.value
+	} else {
+		delete filters.value.work_mode
+	}
+}
+
+const updateSearchQueryFilter = () => {
 	if (searchQuery.value) {
 		orFilters.value = {
 			job_title: ['like', `%${searchQuery.value}%`],
@@ -154,7 +226,9 @@ const updateFilters = () => {
 	} else {
 		orFilters.value = {}
 	}
+}
 
+const updateCountryFilter = () => {
 	if (country.value) {
 		filters.value.country = country.value
 	} else {
@@ -162,23 +236,52 @@ const updateFilters = () => {
 	}
 }
 
-watch(country, (val) => {
+watch(activeTab, () => {
 	updateJobs()
 })
 
-watch(jobs, () => {
-	jobCount.value = jobs.data?.length || 0
+watch(country, () => {
+	updateJobs()
+})
+
+const tabs = computed(() => {
+	const tabsArray = [
+		{
+			label: __('Open'),
+		},
+	]
+
+	if (closedJobs.value) {
+		tabsArray.push({
+			label: __('Closed'),
+		})
+	}
+
+	return tabsArray
 })
 
 const jobTypes = computed(() => {
 	return [
-		'',
+		{ label: ' ', value: ' ' },
 		{ label: __('Full Time'), value: 'Full Time' },
 		{ label: __('Part Time'), value: 'Part Time' },
 		{ label: __('Contract'), value: 'Contract' },
 		{ label: __('Freelance'), value: 'Freelance' },
 	]
 })
+
+const workModes = computed(() => {
+	return [
+		{ label: ' ', value: ' ' },
+		{ label: __('On-site'), value: 'On-site' },
+		{ label: __('Hybrid'), value: 'Hybrid' },
+		{ label: __('Remote'), value: 'Remote' },
+	]
+})
+
+const breadcrumbs = computed(() => [
+	{ label: __('Jobs'), route: { name: 'Jobs' } },
+])
 
 usePageMeta(() => {
 	return {

@@ -1,15 +1,26 @@
+import frappe
+
 from . import __version__ as app_version
 
 app_name = "frappe_lms"
-app_title = "Frappe LMS"
+app_title = "Learning"
 app_publisher = "Frappe"
-app_description = "Frappe LMS App"
+app_description = "Open Source Learning Management System built with Frappe Framework"
 app_icon_url = "/assets/lms/images/lms-logo.png"
 app_icon_title = "Learning"
 app_icon_route = "/lms"
 app_color = "grey"
 app_email = "jannat@frappe.io"
 app_license = "AGPL"
+required_apps = ["frappe/payments"]
+
+
+def get_lms_path():
+	path = "lms"
+	if frappe.conf and frappe.conf.get("lms_path"):
+		path = frappe.conf.get("lms_path")
+	return path.strip("/")
+
 
 # Includes in <head>
 # ------------------
@@ -19,7 +30,6 @@ app_license = "AGPL"
 # app_include_js = "/assets/lms/js/lms.js"
 
 # include js, css files in header of web template
-web_include_css = "lms.bundle.css"
 # web_include_css = "/assets/lms/css/lms.css"
 web_include_js = []
 
@@ -63,7 +73,11 @@ web_include_js = []
 after_install = "lms.install.after_install"
 after_sync = "lms.install.after_sync"
 before_uninstall = "lms.install.before_uninstall"
-setup_wizard_requires = "assets/lms/js/setup_wizard.js"
+setup_wizard_complete = "lms.demo.demo_data.create_demo_data"
+after_migrate = [
+	"lms.sqlite.build_index_in_background",
+	"lms.lms.doctype.lms_payment.lms_payment.add_unique_payment_id_constraint",
+]
 
 # Desk Notifications
 # ------------------
@@ -75,13 +89,18 @@ setup_wizard_requires = "assets/lms/js/setup_wizard.js"
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+permission_query_conditions = {
+	"LMS Certificate": "lms.lms.doctype.lms_certificate.lms_certificate.get_permission_query_conditions",
+}
+
+has_permission = {
+	"LMS Live Class": "lms.lms.doctype.lms_live_class.lms_live_class.has_permission",
+	"LMS Batch": "lms.lms.doctype.lms_batch.lms_batch.has_permission",
+	"LMS Program": "lms.lms.doctype.lms_program.lms_program.has_permission",
+	"LMS Certificate": "lms.lms.doctype.lms_certificate.lms_certificate.has_permission",
+	"Course Lesson": "lms.lms.doctype.course_lesson.course_lesson.has_permission",
+	"File": "lms.lms.permissions.file_has_permission",
+}
 
 # DocType Class
 # ---------------
@@ -101,20 +120,26 @@ doc_events = {
 			"lms.lms.doctype.lms_badge.lms_badge.process_badges",
 		]
 	},
-	"Discussion Reply": {"after_insert": "lms.lms.utils.handle_notifications"},
+	"Discussion Reply": {
+		"after_insert": "lms.lms.utils.handle_notifications",
+		"validate": "lms.lms.utils.validate_discussion_reply",
+	},
 	"Notification Log": {"on_change": "lms.lms.utils.publish_notifications"},
 	"User": {
 		"validate": "lms.lms.user.validate_username_duplicates",
-		"after_insert": "lms.lms.user.after_insert",
+		"before_insert": "lms.lms.user.add_lms_student_role",
 	},
 }
 
 # Scheduled Tasks
 # ---------------
 scheduler_events = {
+	"all": [
+		"lms.sqlite.build_index_in_background",
+	],
 	"hourly": [
 		"lms.lms.doctype.lms_certificate_request.lms_certificate_request.schedule_evals",
-		"lms.lms.api.update_course_statistics",
+		"lms.lms.doctype.lms_course.lms_course.update_course_statistics",
 		"lms.lms.doctype.lms_certificate_request.lms_certificate_request.mark_eval_as_completed",
 		"lms.lms.doctype.lms_live_class.lms_live_class.update_attendance",
 	],
@@ -123,6 +148,8 @@ scheduler_events = {
 		"lms.lms.doctype.lms_payment.lms_payment.send_payment_reminder",
 		"lms.lms.doctype.lms_batch.lms_batch.send_batch_start_reminder",
 		"lms.lms.doctype.lms_live_class.lms_live_class.send_live_class_reminder",
+		"lms.lms.doctype.lms_course.lms_course.send_notification_for_published_courses",
+		"lms.lms.doctype.course_lesson.course_lesson.rename_settled_untitled_lessons",
 	],
 }
 
@@ -153,7 +180,8 @@ override_whitelisted_methods = {
 
 # Add all simple route rules here
 website_route_rules = [
-	{"from_route": "/lms/<path:app_path>", "to_route": "lms"},
+	{"from_route": f"/{get_lms_path()}/<path:app_path>", "to_route": "_lms"},
+	{"from_route": f"/{get_lms_path()}", "to_route": "_lms"},
 	{
 		"from_route": "/courses/<course_name>/<certificate_id>",
 		"to_route": "certificate",
@@ -162,24 +190,25 @@ website_route_rules = [
 
 website_redirects = [
 	{"source": "/update-profile", "target": "/edit-profile"},
-	{"source": "/courses", "target": "/lms/courses"},
+	{"source": "/courses", "target": f"/{get_lms_path()}/courses"},
 	{
 		"source": r"^/courses/.*$",
-		"target": "/lms/courses",
+		"target": f"/{get_lms_path()}/courses",
 	},
-	{"source": "/batches", "target": "/lms/batches"},
+	{"source": "/batches", "target": f"/{get_lms_path()}/batches"},
 	{
 		"source": r"/batches/(.*)",
-		"target": "/lms/batches",
+		"target": f"/{get_lms_path()}/batches",
 		"match_with_query_string": True,
 	},
-	{"source": "/job-openings", "target": "/lms/job-openings"},
+	{"source": "/job-openings", "target": f"/{get_lms_path()}/job-openings"},
 	{
 		"source": r"/job-openings/(.*)",
-		"target": "/lms/job-openings",
+		"target": f"/{get_lms_path()}/job-openings",
 		"match_with_query_string": True,
 	},
-	{"source": "/statistics", "target": "/lms/statistics"},
+	{"source": "/statistics", "target": f"/{get_lms_path()}/statistics"},
+	{"source": "_lms", "target": f"/{get_lms_path()}"},
 ]
 
 update_website_context = [
@@ -188,17 +217,20 @@ update_website_context = [
 
 jinja = {
 	"methods": [
-		"lms.lms.utils.get_signup_optin_checks",
-		"lms.lms.utils.get_tags",
 		"lms.lms.utils.get_lesson_count",
 		"lms.lms.utils.get_instructors",
 		"lms.lms.utils.get_lesson_index",
 		"lms.lms.utils.get_lesson_url",
+		"lms.lms.utils.get_lms_route",
 		"lms.lms.utils.is_instructor",
 		"lms.lms.utils.get_palette",
 	],
 	"filters": [],
 }
+
+extend_bootinfo = [
+	"lms.lms.utils.extend_bootinfo",
+]
 ## Specify the additional tabs to be included in the user profile page.
 ## Each entry must be a subclass of lms.lms.plugins.ProfileTab
 # profile_tabs = []
@@ -240,12 +272,32 @@ signup_form_template = "lms.plugins.show_custom_signup"
 
 on_login = "lms.lms.user.on_login"
 
+get_site_info = "lms.activation.get_site_info"
+
 add_to_apps_screen = [
 	{
 		"name": "lms",
 		"logo": "/assets/lms/frontend/learning.svg",
 		"title": "Learning",
-		"route": "/lms",
+		"route": f"/{get_lms_path()}",
 		"has_permission": "lms.lms.api.check_app_permission",
 	}
 ]
+
+sqlite_search = ["lms.sqlite.LearningSearch"]
+auth_hooks = ["lms.auth.authenticate"]
+require_type_annotated_api_methods = True
+
+# === Raven membership provider ===
+# Hook contract + admin setup: ../raven-membership-provider.md
+# TODO: that page is an interim capture. Publish it at docs.frappe.io/learning
+# (specs/extensibility.md: "A hook isn't shipped until the docs exist") and delete it.
+# LMS contributes its rule types + evaluator to the standalone `raven_integration`
+# app via the `raven_membership_providers` hook. See lms/raven_provider.py.
+raven_membership_providers = ["lms.raven_provider.get_provider"]
+
+# Settings > Integrations > Raven sits inside the Settings modal, which is open to
+# any Moderator, so the endpoints behind it have to be too. raven_integration gates
+# on System Manager plus whatever this hook names, and grants the named roles the
+# permissions its own doctypes need on install/migrate.
+raven_integration_manager_roles = ["Moderator"]

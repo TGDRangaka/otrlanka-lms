@@ -1,115 +1,205 @@
 <template>
-	<div class="">
-		<div class="grid md:grid-cols-[75%,25%] h-screen">
-			<div class="border-r">
-				<header
-					class="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between border-b overflow-hidden bg-surface-white px-3 py-2.5 sm:px-5"
-				>
-					<Breadcrumbs class="text-ellipsis" :items="breadcrumbs" />
-					<Button
-						variant="solid"
-						@click="saveLesson({ showSuccessMessage: true })"
-						class="mt-3 md:mt-0"
-					>
-						{{ __('Save') }}
-					</Button>
-				</header>
-				<div class="py-5">
-					<div class="w-5/6 mx-auto">
-						<FormControl
-							v-model="lesson.title"
-							label="Title"
-							class="mb-4"
-							:required="true"
-						/>
-						<FormControl
-							v-model="lesson.include_in_preview"
-							type="checkbox"
-							label="Include in Preview"
-						/>
+	<div class="py-6 sm:py-10">
+		<!-- `mx-10 px-20` left a 390px phone a 150px content well, so the lesson
+		     title wrapped to four lines. It never overflowed, which is why sweeps
+		     passed it. -->
+		<div class="mx-0 space-y-6 px-4 sm:mx-10 sm:px-20">
+			<!-- A full-width settings row costs a phone more than it earns, so the
+			     lesson's settings collapse behind a chip and open in a sheet. The
+			     desk keeps them inline where there is room. -->
+			<button
+				v-if="isMobile"
+				type="button"
+				class="inline-flex h-9 items-center gap-1.5 rounded-full border border-outline-gray-2 px-3.5 text-p-sm-medium text-ink-gray-7 hover:bg-surface-gray-2"
+				@click="showLessonDetails = true"
+			>
+				<span class="lucide-pencil size-3.5" />
+				{{ __('Lesson details') }}
+			</button>
+
+			<div v-else class="flex items-center justify-between gap-3">
+				<div class="flex items-center gap-3">
+					<Switch v-model="lesson.include_in_preview" @change="markDirty" />
+					<div class="flex items-center gap-1.5">
+						<span class="text-p-base font-medium text-ink-gray-8">
+							{{ __('Include in preview') }}
+						</span>
+						<Tooltip
+							:text="
+								__(
+									'When on, anyone can preview this lesson without enrolling. Otherwise it is visible only to enrolled students.'
+								)
+							"
+						>
+							<span
+								class="lucide-help-circle size-4 shrink-0 text-ink-gray-5"
+							/>
+						</Tooltip>
 					</div>
-					<div class="border-t mt-4">
-						<div class="w-5/6 mx-auto pt-4">
-							<div
-								class="flex justify-between cursor-pointer"
-								@click="
-									() => {
-										openInstructorEditor = !openInstructorEditor
-									}
-								"
-							>
-								<label class="block font-medium text-ink-gray-5 mb-1">
-									{{ __('Instructor Notes') }}
-								</label>
-								<ChevronRight
-									class="stroke-2 h-5 w-5 text-ink-gray-5"
-									:class="{
-										'rotate-90 transform duration-200': openInstructorEditor,
-										'duration-200': !openInstructorEditor,
-									}"
-								/>
+				</div>
+			</div>
+
+			<BottomSheet v-model="showLessonDetails" :title="__('Lesson details')">
+				<div class="px-3 pb-2">
+					<div class="flex items-start justify-between gap-4 py-3">
+						<div class="min-w-0">
+							<div class="text-p-base font-medium text-ink-gray-8">
+								{{ __('Include in preview') }}
 							</div>
-							<div
-								v-show="openInstructorEditor"
-								id="instructor-notes"
-								class="ProseMirror prose prose-table:table-fixed prose-td:p-2 prose-th:p-2 prose-td:border prose-th:border prose-td:border-outline-gray-2 prose-th:border-outline-gray-2 prose-td:relative prose-th:relative prose-th:bg-surface-gray-2 prose-sm max-w-none !whitespace-normal py-3"
-							></div>
+							<p class="mt-0.5 text-p-sm text-ink-gray-5">
+								{{
+									__(
+										'When on, anyone can preview this lesson without enrolling. Otherwise it is visible only to enrolled students.'
+									)
+								}}
+							</p>
 						</div>
-					</div>
-					<div class="border-t mt-4">
-						<div class="w-5/6 mx-auto pt-4">
-							<label class="block font-medium text-ink-gray-5 mb-1">
-								{{ __('Content') }}
-							</label>
-							<div
-								id="content"
-								class="ProseMirror prose prose-table:table-fixed prose-td:p-2 prose-th:p-2 prose-td:border prose-th:border prose-td:border-outline-gray-2 prose-th:border-outline-gray-2 prose-td:relative prose-th:relative prose-th:bg-surface-gray-2 prose-sm max-w-none !whitespace-normal py-3"
-							></div>
-						</div>
+						<Switch
+							v-model="lesson.include_in_preview"
+							class="shrink-0"
+							@change="markDirty"
+						/>
 					</div>
 				</div>
-			</div>
-			<div class="">
-				<div class="sticky top-0 p-5">
-					<LessonHelp />
-				</div>
-			</div>
+			</BottomSheet>
+
+			<!-- `block`: a textarea is inline-block by default, so it sits on the
+			     parent's line box and carries its descender: 5px of space under
+			     the title that belongs to no rule and no gap. -->
+			<textarea
+				ref="titleRef"
+				v-model="lesson.title"
+				:placeholder="__('Lesson title')"
+				:aria-label="__('Lesson title')"
+				rows="1"
+				class="lesson-title block w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl font-bold leading-tight text-ink-gray-9 placeholder:text-ink-gray-4 focus:outline-none focus:ring-0"
+				@input="onTitleInput"
+				@keydown.enter="onTitleEnter"
+			/>
+
+			<details
+				class="instructor-notes rounded-lg border border-outline-gray-2"
+				@toggle="onInstructorNotesToggle"
+			>
+				<summary
+					class="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-start"
+				>
+					<NotebookPen class="size-4 stroke-1.5 text-ink-gray-7" />
+					<span class="text-p-base font-medium text-ink-gray-8">
+						{{ __('Instructor notes') }}
+					</span>
+					<Badge
+						variant="subtle"
+						theme="gray"
+						size="sm"
+						:label="__('private')"
+					/>
+					<ChevronRight
+						class="instructor-notes-chevron ms-auto size-4 text-ink-gray-5"
+					/>
+				</summary>
+				<BlockEditor
+					ref="instructorEditor"
+					class="instructor-notes-editor border-t border-outline-gray-2 py-3"
+					:uploadContext="instructorUploadContext"
+					@change="markDirty"
+				/>
+			</details>
+
+			<BlockEditor
+				ref="editor"
+				:uploadContext="contentUploadContext"
+				@change="markDirty"
+			/>
 		</div>
 	</div>
 </template>
 <script setup>
 import {
-	Breadcrumbs,
+	Badge,
 	Button,
+	Switch,
+	call,
 	createResource,
-	FormControl,
-	usePageMeta,
 	toast,
+	Tooltip,
 } from 'frappe-ui'
 import {
-	computed,
 	reactive,
+	computed,
 	onMounted,
 	inject,
 	ref,
+	nextTick,
 	onBeforeUnmount,
 } from 'vue'
-import { sessionStore } from '../stores/session'
-import EditorJS from '@editorjs/editorjs'
-import LessonHelp from '@/components/LessonHelp.vue'
-import { ChevronRight } from 'lucide-vue-next'
-import { getEditorTools, enablePlyr } from '@/utils'
-import { capture, startRecording, stopRecording } from '@/telemetry'
-import { useOnboarding } from 'frappe-ui/frappe'
+import { ChevronRight, NotebookPen } from 'lucide-vue-next'
+import { useDebounceFn } from '@vueuse/core'
+import { enablePlyr, sanitizeEditorJs } from '@/utils'
+import {
+	hasEditorContent,
+	shouldSkipLessonSave,
+	toSingleLineTitle,
+} from '@/utils/lessonForm'
+import { convertBodyToBlocks as convertToJSON } from '@/utils/lessonMacros'
+import { hasVideoContent } from '@/utils/video'
+import BlockEditor from '@/components/BlockEditor.vue'
+import BottomSheet from '@/components/BottomSheet.vue'
+import { useScreenSize } from '@/utils/composables'
+import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
+import {
+	useKeyboardShortcuts,
+	saveShortcut,
+} from '@/composables/useKeyboardShortcuts'
 
-const { brand } = sessionStore()
+const { isMobile } = useScreenSize()
+const showLessonDetails = ref(false)
+
 const editor = ref(null)
 const instructorEditor = ref(null)
 const user = inject('$user')
-const openInstructorEditor = ref(false)
+const titleRef = ref(null)
+
+// A lesson title is one line. The field stays a textarea so a long title wraps
+// and grows; only the explicit break is refused.
+function onTitleEnter(event) {
+	// Enter also confirms an IME candidate. Never swallow that one.
+	if (event.isComposing) return
+	event.preventDefault()
+}
+
+function onTitleInput() {
+	// Enter is refused on keydown, but a paste or a drop can still carry breaks.
+	lesson.title = toSingleLineTitle(lesson.title)
+	autoGrowTitle()
+	markDirty({ fromTitle: true })
+}
+
+// EditorJS can't focus while the card is collapsed (display:none).
+function onInstructorNotesToggle(event) {
+	if (event.target.open) instructorEditor.value?.focus()
+}
+
+function autoGrowTitle() {
+	const el = titleRef.value
+	if (!el) return
+	el.style.height = 'auto'
+	el.style.height = `${el.scrollHeight}px`
+}
+
+// reactive so the upload block picks up `docname` once the lesson is saved.
+const contentUploadContext = reactive({ docname: null, fieldname: 'content' })
+const instructorUploadContext = reactive({
+	docname: null,
+	fieldname: 'instructor_content',
+})
+const { capture } = useTelemetry()
 const { updateOnboardingStep } = useOnboarding('learning')
-let autoSaveInterval
-let showSuccessMessage = false
+
+const emit = defineEmits(['saved'])
+
+// True after initial render, so render()'s onChange doesn't autosave.
+let initialLoadComplete = false
 
 const props = defineProps({
 	courseName: {
@@ -126,29 +216,56 @@ const props = defineProps({
 	},
 })
 
+const isDirty = ref(false)
+let isUnmounting = false
+let lessonDeleted = false
+function markDeleted() {
+	lessonDeleted = true
+}
+
+const autoSave = useDebounceFn(() => {
+	if (lessonDeleted) return
+	if (isDirty.value && lessonDetails.data?.lesson) saveLesson()
+}, 800)
+
+function markDirty({ fromTitle = false } = {}) {
+	if (lessonDeleted) return
+	if (!lessonDetails.data?.lesson) return
+	// render() fires onChange; gate non-title saves until loaded.
+	if (!fromTitle && !initialLoadComplete) return
+	isDirty.value = true
+	// Capture block data now so a later flush persists latest, not stale.
+	if (!fromTitle) captureEditors()
+	autoSave()
+}
+
+defineExpose({
+	saveLesson,
+	markDeleted,
+	isDirty,
+	lessonHasVideo: () => lessonHasVideo.value,
+	lessonName: () => lessonDetails.data?.lesson?.name,
+	lessonTitle: () => lesson.title,
+})
+
 onMounted(() => {
 	if (!user.data?.is_moderator && !user.data?.is_instructor) {
 		window.location.href = '/login'
 	}
 	capture('lesson_form_opened')
-	startRecording()
-	editor.value = renderEditor('content')
-	instructorEditor.value = renderEditor('instructor-notes')
-	window.addEventListener('keydown', keyboardShortcut)
 	enablePlyr()
 })
 
-const renderEditor = (holder) => {
-	return new EditorJS({
-		holder: holder,
-		tools: getEditorTools(true),
-		autofocus: true,
-		defaultBlock: 'markdown',
-		onChange: async (api, event) => {
-			enablePlyr()
+// ignoreTyping:false enables Ctrl+S in title; guard spares ProseMirror.
+useKeyboardShortcuts({
+	ignoreTyping: false,
+	shortcuts: [
+		{
+			...saveShortcut(() => saveLesson()),
+			guard: (e) => !e.target?.classList?.contains('ProseMirror'),
 		},
-	})
-}
+	],
+})
 
 const lesson = reactive({
 	title: '',
@@ -157,6 +274,8 @@ const lesson = reactive({
 	instructor_notes: '',
 	content: '',
 })
+
+const lessonHasVideo = computed(() => hasVideoContent(lesson))
 
 const lessonDetails = createResource({
 	url: 'lms.lms.utils.get_lesson_creation_details',
@@ -171,23 +290,49 @@ const lessonDetails = createResource({
 			Object.keys(data.lesson).forEach((key) => {
 				lesson[key] = data.lesson[key]
 			})
+			// Titles saved before Enter was refused still hold breaks.
+			lesson.title = toSingleLineTitle(lesson.title)
 			lesson.include_in_preview = data?.lesson?.include_in_preview
 				? true
 				: false
-			addLessonContent(data)
-			addInstructorNotes(data)
-			enableAutoSave()
+			contentUploadContext.docname = data.lesson.name
+			instructorUploadContext.docname = data.lesson.name
+			nextTick(autoGrowTitle)
+			Promise.all([addLessonContent(data), addInstructorNotes(data)]).then(
+				() => {
+					nextTick(() => {
+						// Loaded content isn't user input; arm autosave after render.
+						isDirty.value = false
+						initialLoadComplete = true
+						// A freshly created lesson opens empty as "Untitled lesson".
+						// Focus the title so it can be named (and so the block editor
+						// doesn't grab the caret out from under the title). Existing
+						// lessons focus the body for content editing.
+						if (!data.lesson.content && !data.lesson.body) {
+							titleRef.value?.focus()
+						} else {
+							editor.value?.focus()
+						}
+					})
+				}
+			)
 		}
 	},
 })
 
 const addLessonContent = (data) => {
-	editor.value.isReady.then(() => {
+	// Editor can unmount mid-load; render() on a null ref throws.
+	if (!editor.value) return Promise.resolve()
+	// Return render promise so callers wait for blocks in DOM.
+	return editor.value.isReady().then(() => {
+		if (!editor.value) return
 		if (data.lesson.content) {
-			editor.value.render(JSON.parse(data.lesson.content))
+			return editor.value.render(
+				sanitizeEditorJs(JSON.parse(data.lesson.content))
+			)
 		} else if (data.lesson.body) {
 			let blocks = convertToJSON(data.lesson)
-			editor.value.render({
+			return editor.value.render({
 				blocks: blocks,
 			})
 		}
@@ -195,39 +340,27 @@ const addLessonContent = (data) => {
 }
 
 const addInstructorNotes = (data) => {
-	instructorEditor.value.isReady.then(() => {
+	if (!instructorEditor.value) return Promise.resolve()
+	return instructorEditor.value.isReady().then(() => {
+		if (!instructorEditor.value) return
 		if (data.lesson.instructor_content) {
-			instructorEditor.value.render(JSON.parse(data.lesson.instructor_content))
+			return instructorEditor.value.render(
+				sanitizeEditorJs(JSON.parse(data.lesson.instructor_content))
+			)
 		} else if (data.lesson.instructor_notes) {
 			let blocks = convertToJSON(data.lesson)
-			instructorEditor.value.render({
+			return instructorEditor.value.render({
 				blocks: blocks,
 			})
 		}
 	})
 }
 
-const enableAutoSave = () => {
-	autoSaveInterval = setInterval(() => {
-		saveLesson({ showSuccessMessage: false })
-	}, 10000)
-}
-
-const keyboardShortcut = (e) => {
-	if (
-		e.key === 's' &&
-		(e.ctrlKey || e.metaKey) &&
-		!e.target.classList.contains('ProseMirror')
-	) {
-		saveLesson({ showSuccessMessage: true })
-		e.preventDefault()
-	}
-}
-
 onBeforeUnmount(() => {
-	clearInterval(autoSaveInterval)
-	window.removeEventListener('keydown', keyboardShortcut)
-	stopRecording()
+	isUnmounting = true
+	// Flush unsaved edits before teardown; skip if deleted.
+	if (lessonDeleted) return
+	if (isDirty.value && lessonDetails.data?.lesson) saveLesson({ flush: true })
 })
 
 const newLessonResource = createResource({
@@ -271,131 +404,70 @@ const lessonReference = createResource({
 	},
 })
 
-const convertToJSON = (lessonData) => {
-	let blocks = []
-	if (lessonData.youtube) {
-		let youtubeID = lessonData.youtube.split('/').pop()
-		blocks.push({
-			type: 'embed',
-			data: {
-				service: 'youtube',
-				embed: `https://www.youtube.com/embed/${youtubeID}`,
-			},
-		})
+// Stored body has real content? Lets title-only edits skip re-serialising.
+const storedContentHasBody = () => {
+	if (!lesson.content) return false
+	try {
+		return hasEditorContent(JSON.parse(lesson.content))
+	} catch {
+		return false
 	}
-	lessonData.body.split('\n').forEach((block) => {
-		if (block.includes('{{ YouTubeVideo')) {
-			let youtubeID = block.match(/\(["']([^"']+?)["']\)/)[1]
-			if (!youtubeID.includes('https://'))
-				youtubeID = `https://www.youtube.com/embed/${youtubeID}`
-			blocks.push({
-				type: 'embed',
-				data: {
-					service: 'youtube',
-					embed: youtubeID,
-				},
-			})
-		} else if (block.includes('{{ Quiz')) {
-			let quiz = block.match(/\(["']([^"']+?)["']\)/)[1]
-			blocks.push({
-				type: 'quiz',
-				data: {
-					quiz: quiz,
-				},
-			})
-		} else if (block.includes('{{ Video')) {
-			let video = block.match(/\(["']([^"']+?)["']\)/)[1]
-			blocks.push({
-				type: 'upload',
-				data: {
-					file_url: video,
-					file_type: video.split('.').pop(),
-				},
-			})
-		} else if (block.includes('{{ Audio')) {
-			let audio = block.match(/\(["']([^"']+?)["']\)/)[1]
-			blocks.push({
-				type: 'upload',
-				data: {
-					file_url: audio,
-					file_type: audio.split('.').pop(),
-				},
-			})
-		} else if (block.includes('{{ PDF')) {
-			let pdf = block.match(/\(["']([^"']+?)["']\)/)[1]
-			blocks.push({
-				type: 'upload',
-				data: {
-					file_url: pdf,
-					file_type: 'pdf',
-				},
-			})
-		} else if (block.includes('{{ Embed')) {
-			let embed = block.match(/\(["']([^"']+?)["']\)/)[1]
-			blocks.push({
-				type: 'embed',
-				data: {
-					service: embed.split('|||')[0],
-					embed: embed.split('|||')[1],
-				},
-			})
-		} else if (block.includes('![]')) {
-			let image = block.match(/\((.*?)\)/)[1]
-			blocks.push({
-				type: 'upload',
-				data: {
-					file_url: image,
-					file_type: 'image',
-				},
-			})
-		} else if (block.includes('#')) {
-			let level = (block.match(/#/g) || []).length
-			blocks.push({
-				type: 'header',
-				data: {
-					text: block.replace(/#/g, '').trim(),
-					level: level,
-				},
-			})
-		} else {
-			blocks.push({
-				type: 'paragraph',
-				data: {
-					text: block,
-				},
-			})
-		}
-	})
-
-	if (lessonData.quizId) {
-		blocks.push({
-			type: 'quiz',
-			data: {
-				quiz: lessonData.quizId,
-			},
-		})
-	}
-
-	return blocks
 }
 
-const saveLesson = (e) => {
-	showSuccessMessage = false
-	if (typeof e != 'undefined' && e.showSuccessMessage) {
-		showSuccessMessage = true
+// Editor destroyed mid-save can reject; degrade to null so persist still runs.
+const serialise = (ed) =>
+	ed ? Promise.resolve(ed.save()).catch(() => null) : Promise.resolve(null)
+
+// Fold serialised editor output into lesson; return whether body has content.
+const foldEditorData = (bodyData, notesData) => {
+	// Editor gone or empty: keep stored content so we don't wipe the body.
+	let bodyHasContent = storedContentHasBody()
+	if (bodyData) {
+		bodyData = removeEmptyBlocks(bodyData)
+		bodyHasContent = hasEditorContent(bodyData)
+		if (bodyHasContent) lesson.content = JSON.stringify(bodyData)
 	}
-	editor.value.save().then((outputData) => {
-		outputData = removeEmptyBlocks(outputData)
-		lesson.content = JSON.stringify(outputData)
-		instructorEditor.value.save().then((outputData) => {
-			outputData = removeEmptyBlocks(outputData)
-			lesson.instructor_content = JSON.stringify(outputData)
-			if (lessonDetails.data?.lesson) {
-				editCurrentLesson()
-			} else {
-				createNewLesson()
-			}
-		})
+
+	// Fold notes only after load, else the empty default wipes stored notes.
+	if (initialLoadComplete && notesData) {
+		notesData = removeEmptyBlocks(notesData)
+		lesson.instructor_content = JSON.stringify(notesData)
+		// Clear legacy field so removed notes don't reappear via fallback.
+		lesson.instructor_notes = ''
+	}
+
+	return bodyHasContent
+}
+
+// Serialise live editors into lesson on @change, before any teardown race.
+const captureEditors = async () => {
+	if (lessonDeleted) return
+	const [bodyData, notesData] = await Promise.all([
+		serialise(editor.value),
+		serialise(instructorEditor.value),
+	])
+	foldEditorData(bodyData, notesData)
+}
+
+function saveLesson({ flush = false } = {}) {
+	// Serialise both editors concurrently before unmount destroys them.
+	const bodyPromise = serialise(editor.value)
+	const notesPromise = serialise(instructorEditor.value)
+
+	Promise.all([bodyPromise, notesPromise]).then(([bodyData, notesData]) => {
+		const bodyHasContent = foldEditorData(bodyData, notesData)
+
+		// Skip when there's nothing to save: no title, no body.
+		if (shouldSkipLessonSave(lesson.title, bodyHasContent)) return
+
+		// During teardown only an explicit flush may persist.
+		if (isUnmounting && !flush) return
+		if (lessonDeleted) return
+		if (lessonDetails.data?.lesson) {
+			editCurrentLesson()
+		} else {
+			createNewLesson()
+		}
 	})
 }
 
@@ -424,6 +496,8 @@ const createNewLesson = () => {
 
 							capture('lesson_created')
 							toast.success(__('Lesson created successfully'))
+							isDirty.value = false
+							emit('saved', { isNew: true })
 							lessonDetails.reload()
 						},
 					}
@@ -436,286 +510,93 @@ const createNewLesson = () => {
 	)
 }
 
-const editCurrentLesson = () => {
-	editLesson.submit(
-		{
-			lesson: lessonDetails.data.lesson.name,
-		},
-		{
-			validate() {
-				return validateLesson()
+const editCurrentLesson = (isRetry = false) => {
+	// Catch the re-thrown rejection: a save racing a delete 404s harmlessly.
+	editLesson
+		.submit(
+			{
+				lesson: lessonDetails.data.lesson.name,
 			},
-			onSuccess() {
-				showSuccessMessage
-					? toast.success(__('Lesson updated successfully'))
-					: ''
-			},
-			onError(err) {
-				toast.error(err.message)
-			},
-		}
-	)
+			{
+				validate() {
+					return validateLesson()
+				},
+				onSuccess() {
+					isDirty.value = false
+					emit('saved', {
+						name: lessonDetails.data.lesson.name,
+						title: lesson.title,
+						include_in_preview: lesson.include_in_preview,
+						isNew: false,
+					})
+				},
+			}
+		)
+		.catch((err) => {
+			if (lessonDeleted) return
+			// The daily untitled-lesson rename can move the docname under an open
+			// editor; re-resolve it by index and retry once (a plain reload would
+			// drop the unsaved edits we're saving).
+			if (!isRetry && err?.exc_type === 'DoesNotExistError') {
+				resolveLessonName().then((name) => {
+					if (name) editCurrentLesson(true)
+					else toast.error(err.messages?.[0] || err.message || err)
+				})
+				return
+			}
+			toast.error(err.messages?.[0] || err.message || err)
+		})
 }
+
+const resolveLessonName = () =>
+	call('lms.lms.utils.get_lesson_creation_details', {
+		course: props.courseName,
+		chapter: props.chapterNumber,
+		lesson: props.lessonNumber,
+	})
+		.then((data) => {
+			const name = data?.lesson?.name
+			if (name) {
+				lessonDetails.data.lesson.name = name
+				contentUploadContext.docname = name
+				instructorUploadContext.docname = name
+			}
+			return name || null
+		})
+		.catch(() => null)
 
 const validateLesson = () => {
 	if (!lesson.title) {
 		return 'Title is required'
 	}
-	if (!lesson.content) {
-		return 'Content is required'
-	}
 }
-
-const breadcrumbs = computed(() => {
-	let crumbs = [
-		{
-			label: 'Courses',
-			route: { name: 'Courses' },
-		},
-		{
-			label: lessonDetails.data?.course_title,
-			route: { name: 'CourseForm', params: { courseName: props.courseName } },
-		},
-	]
-
-	if (lessonDetails?.data?.lesson) {
-		crumbs.push({
-			label: lessonDetails.data.lesson.title,
-			route: {
-				name: 'Lesson',
-				params: {
-					courseName: props.courseName,
-					chapterNumber: props.chapterNumber,
-					lessonNumber: props.lessonNumber,
-				},
-			},
-		})
-	}
-	crumbs.push({
-		label: lessonDetails?.data?.lesson ? 'Edit Lesson' : 'Create Lesson',
-		route: {
-			name: 'LessonForm',
-			params: {
-				courseName: props.courseName,
-				chapterNumber: props.chapterNumber,
-				lessonNumber: props.lessonNumber,
-			},
-		},
-	})
-	return crumbs
-})
-
-usePageMeta(() => {
-	return {
-		title: lessonDetails?.data?.lesson
-			? lessonDetails.data.lesson.title
-			: 'New Lesson',
-		icon: brand.favicon,
-	}
-})
 </script>
 <style>
-.embed-tool__caption,
-.cdx-simple-image__caption {
+/* Drop the default disclosure marker; rotate chevron via [open]. */
+.instructor-notes > summary {
+	list-style: none;
+}
+.instructor-notes > summary::-webkit-details-marker {
 	display: none;
 }
-
-.ce-block__content {
-	max-width: none;
+.instructor-notes-chevron {
+	transition: transform 200ms;
+}
+.instructor-notes[open] .instructor-notes-chevron {
+	transform: rotate(90deg);
+}
+[dir='rtl'] .instructor-notes:not([open]) .instructor-notes-chevron {
+	transform: rotate(180deg);
 }
 
-.codex-editor--narrow .ce-toolbar__actions {
-	right: 100%;
+/* Indent so EditorJS's left-gutter controls stay inside the card. */
+.instructor-notes-editor .ce-block__content,
+.instructor-notes-editor .ce-toolbar__content {
+	margin-inline-start: 4.5rem;
 }
 
-.ce-toolbar__content {
-	max-width: none;
-}
-
-.codeBoxHolder {
-	display: flex;
-	flex-direction: column;
-	justify-content: flex-start;
-	align-items: flex-start;
-}
-
-.codeBoxTextArea {
-	width: 100%;
-	min-height: 30px;
-	padding: 10px;
-	border-radius: 2px 2px 2px 0;
-	border: none !important;
-	outline: none !important;
-	font: 14px monospace;
-}
-
-.codeBoxSelectDiv {
-	display: flex;
-	flex-direction: column;
-	justify-content: flex-start;
-	align-items: flex-start;
-	position: relative;
-}
-
-.codeBoxSelectInput {
-	border-radius: 0 0 20px 2px;
-	padding: 2px 26px;
-	padding-top: 0;
-	padding-right: 0;
-	text-align: left;
-	cursor: pointer;
-	border: none !important;
-	outline: none !important;
-}
-
-.codeBoxSelectDropIcon {
-	position: absolute !important;
-	left: 10px !important;
-	bottom: 0 !important;
-	width: unset !important;
-	height: unset !important;
-	font-size: 16px !important;
-}
-
-.codeBoxSelectPreview {
-	display: none;
-	flex-direction: column;
-	justify-content: flex-start;
-	align-items: flex-start;
-	border-radius: 2px;
-	box-shadow: 0 3px 15px -3px rgba(13, 20, 33, 0.13);
-	position: absolute;
-	top: 100%;
-	margin: 5px 0;
-	max-height: 30vh;
-	overflow-x: hidden;
-	overflow-y: auto;
-	z-index: 10000;
-}
-
-.codeBoxSelectItem {
-	width: 100%;
-	padding: 5px 20px;
-	margin: 0;
-	cursor: pointer;
-}
-
-.codeBoxSelectedItem {
-	background-color: lightblue !important;
-}
-
-.codeBoxShow {
-	display: flex !important;
-}
-
-.dark {
-	color: #abb2bf;
-	background-color: #282c34;
-}
-
-.light {
-	color: #383a42;
-	background-color: #fafafa;
-}
-
-.codeBoxTextArea {
-	line-height: 1.7;
-}
-
-.prose :where(pre):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
-	overflow-x: unset;
-}
-
-iframe {
-	border: none !important;
-}
-
-.tc-table {
-	border-left: 1px solid #e8e8eb;
-}
-
-.ce-toolbox__button[data-tool='markdown'] {
-	display: none !important;
-}
-
-.ce-popover-item[data-item-name='markdown'] {
-	display: none !important;
-}
-
-.plyr__volume input[type='range'] {
-	display: none;
-}
-
-.plyr__control--overlaid {
-	background: radial-gradient(
-		circle,
-		rgba(0, 0, 0, 0.4) 0%,
-		rgba(0, 0, 0, 0.5) 50%
-	);
-}
-
-.plyr__control:hover {
-	background: none;
-}
-
-.plyr--video {
-	border: 1px solid theme('colors.gray.200');
-	border-radius: 8px;
-}
-
-.ce-popover__container {
-	border-radius: 12px;
-	padding: 8px;
-}
-
-.cdx-search-field {
-	border: none;
-}
-
-.cdx-search-field__input {
-	font-weight: 400;
-	font-size: 13px;
-}
-
-.cdx-search-field__input::before {
-	font-weight: 400;
-}
-
-.cdx-search-field__input:focus {
-	--tw-ring-color: theme('colors.gray.100');
-}
-
-.ce-popover-item__title {
-	font-size: 13px;
-	font-weight: 400;
-}
-
-.ce-popover-item__icon svg {
-	width: 15px;
-	height: 15px;
-}
-
-.ce-popover--opened > .ce-popover__container {
-	max-height: unset;
-}
-
-.cdx-search-field__icon svg {
-	width: 15px;
-	height: 15px;
-}
-
-.cdx-search-field__icon {
-	margin-right: 5px;
-}
-
-.cdx-block.embed-tool {
-	position: relative;
-	display: inline-block;
-	width: 100%;
-}
-
-:root {
-	--plyr-range-fill-background: white;
-	--plyr-video-control-background-hover: transparent;
+/* Lift instructor editor so its + menu paints above the content editor. */
+.instructor-notes-editor .codex-editor {
+	z-index: 2;
 }
 </style>

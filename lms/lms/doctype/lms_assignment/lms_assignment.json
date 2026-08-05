@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_import": 1,
  "allow_rename": 1,
  "autoname": "format: ASG-{#####}",
  "creation": "2023-05-26 19:41:26.025081",
@@ -9,10 +10,11 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
-  "question",
-  "column_break_hmwv",
   "type",
   "grade_assignment",
+  "course",
+  "column_break_hmwv",
+  "question",
   "section_break_sjti",
   "show_answer",
   "answer"
@@ -68,12 +70,24 @@
   {
    "fieldname": "section_break_sjti",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "course",
+   "fieldtype": "Link",
+   "label": "Course",
+   "options": "LMS Course"
   }
  ],
+ "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "links": [],
- "modified": "2024-12-24 09:36:31.464508",
- "modified_by": "Administrator",
+ "links": [
+  {
+   "link_doctype": "LMS Assignment Submission",
+   "link_fieldname": "assignment"
+  }
+ ],
+ "modified": "2026-02-05 11:37:36.492016",
+ "modified_by": "sayali@frappe.io",
  "module": "LMS",
  "name": "LMS Assignment",
  "naming_rule": "Expression (old style)",
@@ -96,6 +110,7 @@
    "delete": 1,
    "email": 1,
    "export": 1,
+   "import": 1,
    "print": 1,
    "read": 1,
    "report": 1,
@@ -111,11 +126,37 @@
    "report": 1,
    "role": "LMS Student",
    "share": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "import": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Course Creator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "import": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Batch Evaluator",
+   "share": 1,
+   "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "title"
+ "title_field": "title",
+ "track_changes": 1
 }

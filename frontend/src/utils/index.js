@@ -1,6 +1,4 @@
 import { call, toast } from 'frappe-ui'
-import { useTimeAgo } from '@vueuse/core'
-import { theme } from '@/utils/theme'
 import { Quiz } from '@/utils/quiz'
 import { Program } from '@/utils/program'
 import { Assignment } from '@/utils/assignment'
@@ -8,23 +6,38 @@ import { Upload } from '@/utils/upload'
 import { Markdown } from '@/utils/markdownParser'
 import { useSettings } from '@/stores/settings'
 import { usersStore } from '@/stores/user'
-import Header from '@editorjs/header'
+import { Heading } from '@/utils/heading'
 import Paragraph from '@editorjs/paragraph'
 import { CodeBox } from '@/utils/code'
 import NestedList from '@editorjs/nested-list'
 import InlineCode from '@editorjs/inline-code'
+import { Bold } from '@/utils/inline/Bold'
+import { Underline } from '@/utils/inline/Underline'
+import { Strikethrough } from '@/utils/inline/Strikethrough'
+import { AlignLeft, AlignCenter, AlignRight } from '@/utils/inline/TextAlign'
+import { Color } from '@/utils/inline/Color'
+import {
+	clipboardTunes,
+	clipboardTuneNames,
+} from '@/utils/blockTunes/clipboardTunes'
 import dayjs from '@/utils/dayjs'
 import Embed from '@editorjs/embed'
 import SimpleImage from '@editorjs/simple-image'
 import Table from '@editorjs/table'
-import Plyr from 'plyr'
-import 'plyr/dist/plyr.css'
+import DOMPurify from 'dompurify'
 
 const readOnlyMode = window.read_only_mode
 
-export function timeAgo(date) {
-	return useTimeAgo(date).value
-}
+// Pure formatting helpers live in a leaf module to avoid a barrel import cycle
+// (index.js -> editor tools -> components -> '@/utils'). Re-exported here so
+// existing '@/utils' consumers keep working; cycle-prone consumers import them
+// from '@/utils/format' directly.
+export {
+	timeAgo,
+	formatSeconds,
+	escapeHTML,
+	formatTimestamp,
+} from '@/utils/format'
 
 export function formatTime(timeString) {
 	if (!timeString) return ''
@@ -36,12 +49,6 @@ export function formatTime(timeString) {
 		hour12: true,
 	}).format(dummyDate)
 	return formattedTime
-}
-
-export const formatSeconds = (time) => {
-	const minutes = Math.floor(time / 60)
-	const seconds = Math.floor(time % 60)
-	return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 }
 
 export function formatNumber(number) {
@@ -68,6 +75,12 @@ export function formatAmount(amount) {
 		return (amount / 1000).toFixed(1) + 'k'
 	}
 	return amount
+}
+
+export function formatRating(value) {
+	const n = Number(value)
+	if (!isFinite(n)) return ''
+	return (Math.round(n * 10) / 10).toString()
 }
 
 export function convertToTitleCase(str) {
@@ -110,37 +123,75 @@ export function htmlToText(html) {
 	return div.textContent || div.innerText || ''
 }
 
-export function getEditorTools() {
+// Visual order of the inline toolbar (automad layout). References registered
+// inline-tool names: EditorJS built-ins (bold/italic/link) + our custom tools.
+const INLINE_TOOLBAR_ORDER = [
+	'alignLeft',
+	'alignCenter',
+	'alignRight',
+	'bold',
+	'italic',
+	'link',
+	'inlineCode',
+	'underline',
+	'strikeThrough',
+	'color',
+]
+
+export function getEditorTools(
+	isInstructorEditor = false,
+	uploadContext = {},
+	{ studentView = false } = {}
+) {
 	return {
 		header: {
-			class: Header,
+			class: Heading,
+			// Without this key EditorJS leaves tool.inlineTools empty, so the
+			// inline toolbar never opens on a heading and Ctrl+B falls through
+			// to the browser's execCommand (which writes a font-weight span the
+			// sanitizer then strips). Headings take the same toolbar as text.
+			inlineToolbar: INLINE_TOOLBAR_ORDER,
 			config: {
 				placeholder: 'Header',
 			},
 		},
 		list: {
 			class: NestedList,
-			inlineToolbar: true,
+			inlineToolbar: INLINE_TOOLBAR_ORDER,
 			config: {
 				defaultStyle: 'ordered',
 			},
 		},
+		upload: {
+			class: Upload,
+			config: uploadContext,
+		},
 		table: {
 			class: Table,
-			inlineToolbar: true,
+			inlineToolbar: INLINE_TOOLBAR_ORDER,
 		},
 		quiz: Quiz,
-		assignment: Assignment,
-		program: Program,
-		upload: Upload,
+		// The submission renders in an iframe (a separate app instance), so
+		// provide/inject can't reach it. Pass Student View through the tool
+		// config and on into the iframe URL.
+		assignment: {
+			class: Assignment,
+			config: { studentView },
+		},
+		// Renders its submission in an iframe too, so Student View travels the
+		// same way it does for assignments.
+		program: {
+			class: Program,
+			config: { studentView },
+		},
 		markdown: {
 			class: Markdown,
-			inlineToolbar: true,
+			inlineToolbar: INLINE_TOOLBAR_ORDER,
 		},
 		image: SimpleImage,
 		paragraph: {
 			class: Paragraph,
-			inlineToolbar: true,
+			inlineToolbar: INLINE_TOOLBAR_ORDER,
 			config: {
 				preserveBlank: true,
 			},
@@ -155,26 +206,41 @@ export function getEditorTools() {
 			class: InlineCode,
 			shortcut: 'CMD+SHIFT+M',
 		},
+		// Overrides EditorJS's execCommand-based Bold, which can't bold a
+		// heading (see utils/inline/Bold.ts).
+		bold: {
+			class: Bold,
+		},
+		underline: Underline,
+		strikeThrough: Strikethrough,
+		alignLeft: AlignLeft,
+		alignCenter: AlignCenter,
+		alignRight: AlignRight,
+		color: Color,
+		copyBlock: clipboardTunes.copyBlock,
+		cutBlock: clipboardTunes.cutBlock,
+		pasteBlock: clipboardTunes.pasteBlock,
 		embed: {
 			class: Embed,
 			inlineToolbar: false,
 			config: {
 				services: {
 					youtube: {
-						regex: /(?:https?:\/\/)?(?:www\.)?(?:(?:youtu\.be\/)|(?:youtube\.com)\/(?:v\/|u\/\w\/|embed\/|watch))(?:(?:\?v=)?([^#&?=]*))?((?:[?&]\w*=\w*)*)/,
+						regex: /^(?:https?:\/\/)?(?:www\.)?(?:(?:youtu\.be\/)|(?:youtube\.com)\/(?:v\/|u\/\w\/|embed\/|watch))(?:(?:\?v=)?([^#&?=]*))?((?:[?&]\w*=\w*)*)$/,
 						embedUrl: '<%= remote_id %>',
 						/* 'https://www.youtube.com/embed/<%= remote_id %>?origin=https://plyr.io&amp;iv_load_policy=3&amp;modestbranding=1&amp;playsinline=1&amp;showinfo=0&amp;rel=0&amp;enablejsapi=1' */
 						html: `<div class="video-player" data-plyr-provider="youtube"></div>`,
 						id: ([id]) => id,
 					},
 					vimeo: {
-						regex: /(?:http[s]?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/,
-						embedUrl: '<%= remote_id %>',
+						regex: /^(?:http[s]?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)(?:\/([a-zA-Z0-9]+))?(?:\?[^\s]*)?$/,
+						embedUrl:
+							'https://player.vimeo.com/video/<%= remote_id %>',
 						html: `<div class="video-player" data-plyr-provider="vimeo"></div>`,
-						id: ([id]) => id,
+						id: ([id, hash]) => (hash ? `${id}?h=${hash}` : id),
 					},
 					cloudflareStream: {
-						regex: /https:\/\/customer-[a-z0-9]+\.cloudflarestream\.com\/([a-f0-9]{32})\/watch/,
+						regex: /^https:\/\/customer-[a-z0-9]+\.cloudflarestream\.com\/([a-f0-9]{32})\/watch$/,
 						embedUrl:
 							'https://iframe.videodelivery.net/<%= remote_id %>',
 						html: `<iframe style="width:100%; height: ${
@@ -182,16 +248,16 @@ export function getEditorTools() {
 						};" frameborder="0" allowfullscreen></iframe>`,
 					},
 					bunnyStream: {
-						regex: /https:\/\/(?:iframe\.mediadelivery\.net|video\.bunnycdn\.com)\/play\/([a-zA-Z0-9]+\/[a-zA-Z0-9-]+)/,
+						regex: /^https:\/\/(?:iframe\.mediadelivery\.net|video\.bunnycdn\.com|player\.mediadelivery\.net)\/play\/([a-zA-Z0-9]+\/[a-zA-Z0-9-]+)$/,
 						embedUrl:
-							'https://iframe.mediadelivery.net/embed/<%= remote_id %>',
+							'https://player.mediadelivery.net/embed/<%= remote_id %>',
 						html: `<iframe style="width:100%; height: ${
 							window.innerWidth < 640 ? '15rem' : '30rem'
 						};" frameborder="0" allowfullscreen></iframe>`,
 					},
 					codepen: true,
 					aparat: {
-						regex: /(?:http[s]?:\/\/)?(?:www.)?aparat\.com\/v\/([^\/\?\&]+)\/?/,
+						regex: /^(?:http[s]?:\/\/)?(?:www.)?aparat\.com\/v\/([^\/\?\&]+)\/?$/,
 						embedUrl:
 							'https://www.aparat.com/video/video/embed/videohash/<%= remote_id %>/vt/frame',
 						html: `<iframe style="margin: 0 auto; width: 100%; height: ${
@@ -200,7 +266,7 @@ export function getEditorTools() {
 					},
 					github: true,
 					slides: {
-						regex: /https:\/\/docs\.google\.com\/presentation\/d\/([A-Za-z0-9_-]+)\/pub/,
+						regex: /^https:\/\/docs\.google\.com\/presentation\/d\/([A-Za-z0-9_-]+)\/pub$/,
 						embedUrl:
 							'https://docs.google.com/presentation/d/<%= remote_id %>/embed',
 						html: `<iframe style='width: 100%; height: ${
@@ -208,7 +274,7 @@ export function getEditorTools() {
 						}; border: 1px solid #D3D3D3; border-radius: 12px; margin: 1rem 0' frameborder='0' allowfullscreen='true'></iframe>`,
 					},
 					drive: {
-						regex: /https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)\/view(\?.+)?/,
+						regex: /^https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)\/view(\?.+)?$/,
 						embedUrl:
 							'https://drive.google.com/file/d/<%= remote_id %>/preview',
 						html: `<iframe style='width: 100%; height: ${
@@ -216,33 +282,39 @@ export function getEditorTools() {
 						}; border: 1px solid #D3D3D3; border-radius: 12px;' frameborder='0' allowfullscreen='true'></iframe>`,
 					},
 					docsPublic: {
-						regex: /https:\/\/docs\.google\.com\/document\/d\/([A-Za-z0-9_-]+)\/edit(\?.+)?/,
+						regex: /^https:\/\/docs\.google\.com\/document\/d\/([A-Za-z0-9_-]+)\/edit(\?.+)?$/,
 						embedUrl:
 							'https://docs.google.com/document/d/<%= remote_id %>/preview',
 						html: "<iframe style='width: 100%; height: 40rem; border: 1px solid #D3D3D3; border-radius: 12px;' frameborder='0' allowfullscreen='true'></iframe>",
 					},
 					sheetsPublic: {
-						regex: /https:\/\/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]+)\/edit(\?.+)?/,
+						regex: /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]+)\/edit(\?.+)?$/,
 						embedUrl:
 							'https://docs.google.com/spreadsheets/d/<%= remote_id %>/preview',
 						html: "<iframe style='width: 100%; height: 40rem; border: 1px solid #D3D3D3; border-radius: 12px;' frameborder='0' allowfullscreen='true'></iframe>",
 					},
 					slidesPublic: {
-						regex: /https:\/\/docs\.google\.com\/presentation\/d\/([A-Za-z0-9_-]+)\/edit(\?.+)?/,
+						regex: /^https:\/\/docs\.google\.com\/presentation\/d\/([A-Za-z0-9_-]+)\/edit(\?.+)?$/,
 						embedUrl:
 							'https://docs.google.com/presentation/d/<%= remote_id %>/embed',
 						html: "<iframe style='width: 100%; height: 30rem; border: 1px solid #D3D3D3; border-radius: 12px; margin: 1rem 0;' frameborder='0' allowfullscreen='true'></iframe>",
 					},
 					codesandbox: {
-						regex: /^https:\/\/codesandbox\.io\/(?:embed\/)?([A-Za-z0-9_-]+)(?:\?[^\/]*)?$/,
+						regex: /^https:\/\/codesandbox\.io\/(?:(?:p\/(?:sandbox|devbox)\/)|(?:embed\/)|(?:s\/))?([A-Za-z0-9_-]+)(?:[\/\?].*)?$/,
 						embedUrl:
 							'https://codesandbox.io/embed/<%= remote_id %>?view=editor+%2B+preview&module=%2Findex.html',
-						html: "<iframe style='width: 100%; height: 500px; border: 0; border-radius: 4px; overflow: hidden;' sandbox='allow-mods allow-forms allow-popups allow-scripts allow-same-origin' frameborder='0' allowfullscreen='true'></iframe>",
+						html: "<iframe style='width: 100%; height: 500px; border: 0; border-radius: 4px; overflow: hidden;' sandbox='allow-modals allow-forms allow-popups allow-scripts allow-same-origin' frameborder='0' allowfullscreen='true'></iframe>",
 					},
 				},
 			},
 		},
 	}
+}
+
+// Block tunes added to every block's settings menu (alongside the native
+// Move up/down + Delete). Pass to EditorJS's global `tunes` config.
+export function getEditorTunes() {
+	return [...clipboardTuneNames]
 }
 
 export function getTimezones() {
@@ -401,45 +473,194 @@ export function getUserTimezone() {
 	}
 }
 
-export function getSidebarLinks() {
+export function getSidebarLinks(forMobile = false) {
+	let links = getSidebarItems(forMobile)
+
+	links.forEach((link) => {
+		link.items = link.items.filter((item) => {
+			return item.condition ? item.condition() : true
+		})
+	})
+
+	links = links.filter((link) => {
+		return link.items.length > 0
+	})
+
+	return links
+}
+
+const getSidebarItems = (forMobile = false) => {
+	const { userResource } = usersStore()
+	const { settings } = useSettings()
+
 	return [
 		{
-			label: 'Courses',
-			icon: 'BookOpen',
-			to: 'Courses',
-			activeFor: [
-				'Courses',
-				'CourseDetail',
-				'Lesson',
-				'CourseForm',
-				'LessonForm',
+			label: 'General',
+			hideLabel: true,
+			items: [
+				{
+					label: 'Home',
+					icon: 'Home',
+					to: 'Home',
+					activeFor: ['Home'],
+					condition: () => {
+						return userResource?.data
+					},
+				},
+				{
+					label: 'Search',
+					icon: 'Search',
+					action: 'commandPalette',
+					shortcut: 'Mod+K',
+					condition: () => {
+						return !forMobile && userResource?.data
+					},
+				},
+				{
+					label: 'Notifications',
+					icon: 'Bell',
+					panel: 'notifications',
+					condition: () => {
+						return !forMobile && userResource?.data
+					},
+				},
 			],
 		},
 		{
-			label: 'Batches',
-			icon: 'Users',
-			to: 'Batches',
-			activeFor: ['Batches', 'BatchDetail', 'Batch', 'BatchForm'],
+			label: 'Learning',
+			hideLabel: true,
+			items: [
+				{
+					label: 'Courses',
+					icon: 'BookOpen',
+					to: 'Courses',
+					activeFor: ['Courses', 'CourseDetail', 'Lesson'],
+				},
+				{
+					label: 'Programs',
+					icon: 'Route',
+					to: 'Programs',
+					activeFor: ['Programs', 'ProgramDetail'],
+					await: true,
+					condition: () => {
+						return checkIfCanAddProgram(forMobile)
+					},
+				},
+				{
+					label: 'Batches',
+					icon: 'Users',
+					to: 'Batches',
+					activeFor: ['Batches', 'BatchDetail', 'Batch', 'BatchForm'],
+				},
+				{
+					label: 'Certifications',
+					icon: 'GraduationCap',
+					to: 'CertifiedParticipants',
+					activeFor: ['CertifiedParticipants'],
+					condition: () => {
+						return userResource?.data
+					},
+				},
+				{
+					label: 'Jobs',
+					icon: 'Briefcase',
+					to: 'Jobs',
+					activeFor: ['Jobs', 'JobDetail'],
+				},
+				{
+					label: 'Statistics',
+					icon: 'TrendingUp',
+					to: 'Statistics',
+					activeFor: ['Statistics'],
+				},
+				{
+					label: 'Contact Us',
+					icon: settings.data?.contact_us_url ? 'Headset' : 'Mail',
+					to: settings.data?.contact_us_url
+						? settings.data?.contact_us_url
+						: settings.data?.contact_us_email,
+					condition: () => {
+						return (
+							(!forMobile &&
+								settings?.data?.contact_us_email &&
+								userResource?.data) ||
+							settings?.data?.contact_us_url
+						)
+					},
+				},
+			],
 		},
 		{
-			label: 'Certified Members',
-			icon: 'GraduationCap',
-			to: 'CertifiedParticipants',
-			activeFor: ['CertifiedParticipants'],
-		},
-		{
-			label: 'Jobs',
-			icon: 'Briefcase',
-			to: 'Jobs',
-			activeFor: ['Jobs', 'JobDetail'],
-		},
-		{
-			label: 'Statistics',
-			icon: 'TrendingUp',
-			to: 'Statistics',
-			activeFor: ['Statistics'],
+			label: 'Assessments',
+			hideLabel: true,
+			items: [
+				{
+					label: 'Quizzes',
+					icon: 'CircleHelp',
+					to: 'Quizzes',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: [
+						'Quizzes',
+						'QuizForm',
+						'QuizPage',
+						'QuizSubmissionList',
+						'QuizSubmission',
+					],
+				},
+				{
+					label: 'Assignments',
+					icon: 'Pencil',
+					to: 'Assignments',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: [
+						'Assignments',
+						'AssignmentSubmissionList',
+						'AssignmentSubmission',
+					],
+				},
+				{
+					label: 'Programming Exercises',
+					icon: 'Code',
+					to: 'ProgrammingExercises',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: [
+						'ProgrammingExercises',
+						'ProgrammingExerciseSubmissions',
+						'ProgrammingExerciseSubmission',
+					],
+				},
+			],
 		},
 	]
+}
+
+const isAdmin = () => {
+	const { userResource } = usersStore()
+	return (
+		userResource?.data?.is_instructor ||
+		userResource?.data?.is_moderator ||
+		userResource.data?.is_evaluator
+	)
+}
+
+const checkIfCanAddProgram = (forMobile = false) => {
+	const { userResource } = usersStore()
+	const { programs } = useSettings()
+	if (!userResource.data) return false
+	if (forMobile) return false
+	if (userResource?.data?.is_moderator || userResource?.data?.is_instructor) {
+		return true
+	}
+	return (
+		programs.data?.enrolled.length > 0 ||
+		programs.data?.published.length > 0
+	)
 }
 
 export function getFormattedDateRange(
@@ -487,18 +708,32 @@ export function singularize(word) {
 	)
 }
 
-export const validateFile = async (file, showToast = true) => {
+export const validateFile = async (
+	file,
+	showToast = true,
+	fileType = 'image'
+) => {
+	const extension = file.name.split('.').pop().toLowerCase()
 	const error = (msg) => {
 		if (showToast) toast.error(msg)
 		console.error(msg)
 		return msg
 	}
 
-	if (!file.type.startsWith('image/')) {
-		return error(__('Only image file is allowed.'))
-	}
-
-	if (file.type === 'image/svg+xml') {
+	if (fileType == 'pdf' && extension != 'pdf') {
+		return error(__('Only PDF files are allowed.'))
+	} else if (fileType == 'document' && !['doc', 'docx'].includes(extension)) {
+		return error(
+			__('Only document file of type .doc or .docx are allowed.')
+		)
+	} else if (fileType == 'zip' && extension != 'zip') {
+		return error(__('Only ZIP files are allowed.'))
+	} else if (
+		['image', 'video'].includes(fileType) &&
+		!file.type.startsWith(`${fileType}/`)
+	) {
+		return error(__('Only {0} file is allowed.').format(fileType))
+	} else if (file.type === 'image/svg+xml') {
 		const text = await file.text()
 
 		const blacklist = [
@@ -522,23 +757,71 @@ export const validateFile = async (file, showToast = true) => {
 	return null
 }
 
-export const escapeHTML = (text) => {
-	if (!text) return ''
-	let escape_html_mapping = {
-		'&': '&amp;',
-		'<': '&lt;',
-		'>': '&gt;',
-		'"': '&quot;',
-		"'": '&#39;',
-		'`': '&#x60;',
-		'=': '&#x3D;',
+const sanitizeJSON = (node) => {
+	if (Array.isArray(node)) return node.map(sanitizeJSON)
+	if (node && typeof node === 'object') {
+		const temp = {}
+		for (const n in node) {
+			temp[n] = sanitizeJSON(node[n])
+		}
+		return temp
 	}
-
-	return String(text).replace(
-		/[&<>"'`=]/g,
-		(char) => escape_html_mapping[char] || char
-	)
+	if (
+		typeof node === 'string' &&
+		(node.includes('<') || node.includes('>'))
+	) {
+		return DOMPurify.sanitize(node)
+	}
+	return node
 }
+
+export const sanitizeEditorJs = (data) => {
+	if (!data || !Array.isArray(data.blocks)) return data
+	for (const node of data.blocks) {
+		if (node && node.type !== 'code') {
+			node.data = sanitizeJSON(node.data)
+		}
+	}
+	return data
+}
+
+export const sanitizeHTML = (text) => {
+	text = DOMPurify.sanitize(decodeEntities(text), {
+		ALLOWED_TAGS: [
+			'b',
+			'br',
+			'h1',
+			'h2',
+			'h3',
+			'h4',
+			'h5',
+			'h6',
+			'table',
+			'thead',
+			'tbody',
+			'tr',
+			'th',
+			'td',
+			'i',
+			'em',
+			'strong',
+			'a',
+			'p',
+			'br',
+			'ul',
+			'ol',
+			'li',
+			'img',
+			'blockquote',
+		],
+		ALLOWED_ATTR: ['href', 'target', 'src'],
+	})
+	return text
+}
+
+// Re-exported from a lean module so it stays testable without index.js's heavy
+// frappe-ui/EditorJS import chain (same pattern as ./plyr below).
+export { sanitizeRichHTML } from './sanitizeRichHTML'
 
 export const canCreateCourse = () => {
 	const { userResource } = usersStore()
@@ -548,84 +831,27 @@ export const canCreateCourse = () => {
 	)
 }
 
-export const enablePlyr = async () => {
-	await wait(500)
+// Plyr setup lives in ./plyr (a lean module that only pulls in Plyr + the
+// settings store) so it stays importable/testable without index.js's heavy
+// EditorJS/frappe-ui import chain. Re-exported here for existing callers.
+export { enablePlyr } from './plyr'
 
-	const players = []
-	const videoElements = document.getElementsByClassName('video-player')
-
-	if (videoElements.length === 0) return players
-
-	Array.from(videoElements).forEach((video) => {
-		setupPlyrForVideo(video, players)
-	})
-
-	return players
-}
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-const setupPlyrForVideo = (video, players) => {
-	const src = video.getAttribute('src')
-
-	if (src) {
-		const videoID = extractYouTubeId(src)
-		video.setAttribute('data-plyr-embed-id', videoID)
-	}
-
-	let controls = [
-		'play-large',
-		'play',
-		'progress',
-		'current-time',
-		'mute',
-		'volume',
-		'fullscreen',
-	]
-
-	const player = new Plyr(video, {
-		youtube: { noCookie: true },
-		controls: controls,
-		listeners: {
-			seek: function customSeekBehavior(e) {
-				const current_time = player.currentTime
-				const newTime = getTargetTime(player, e)
-				if (
-					useSettings().preventSkippingVideos.data &&
-					parseFloat(newTime) > current_time
-				) {
-					e.preventDefault()
-					player.currentTime = current_time
-					return false
-				}
-			},
+export const createLMSCategory = (name) => {
+	return call('frappe.client.insert', {
+		doc: {
+			doctype: 'LMS Category',
+			category: name,
 		},
 	})
-
-	players.push(player)
-}
-
-const getTargetTime = (plyr, input) => {
-	if (
-		typeof input === 'object' &&
-		(input.type === 'input' || input.type === 'change')
-	) {
-		return (input.target.value / input.target.max) * plyr.duration
-	} else {
-		return Number(input)
-	}
-}
-
-const extractYouTubeId = (url) => {
-	try {
-		const parsedUrl = new URL(url)
-		return (
-			parsedUrl.searchParams.get('v') ||
-			parsedUrl.pathname.split('/').pop()
-		)
-	} catch {
-		return url.split('/').pop()
-	}
+		.then((data) => {
+			toast.success(__('Category created successfully'))
+			return data.name
+		})
+		.catch((err) => {
+			toast.error(
+				cleanError(err.messages?.[0]) || __('Unable to create category')
+			)
+		})
 }
 
 export const openSettings = (category, close = null) => {
@@ -675,7 +901,7 @@ export const getMetaInfo = (type, route, meta) => {
 
 export const updateMetaInfo = (type, route, meta) => {
 	call('lms.lms.api.update_meta_info', {
-		type: type,
+		meta_type: type,
 		route: route,
 		meta_tags: [
 			{ key: 'description', value: meta.description },
@@ -685,14 +911,6 @@ export const updateMetaInfo = (type, route, meta) => {
 		toast.error(__('Failed to update meta tags {0}').format(error))
 		console.error(error)
 	})
-}
-
-export const formatTimestamp = (seconds) => {
-	const date = new Date(seconds * 1000)
-	const hours = String(date.getUTCHours()).padStart(2, '0')
-	const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-	const secs = String(date.getUTCSeconds()).padStart(2, '0')
-	return hours > 0 ? `${hours}:${minutes}:${secs}` : `${minutes}:${secs}`
 }
 
 const getRootNode = (selector = '#editor') => {
@@ -729,10 +947,10 @@ const createHighlightSpan = (color, name, scrollIntoView) => {
 	const span = document.createElement('span')
 	span.className = 'highlighted-text'
 	if (scrollIntoView) {
-		span.style.border = `2px solid ${theme.backgroundColor[color][400]}`
+		span.style.border = `2px solid var(--${color}-400)`
 		span.style.borderRadius = '4px'
 	} else {
-		span.style.backgroundColor = theme.backgroundColor[color][200]
+		span.style.backgroundColor = `var(--${color}-200)`
 	}
 	span.dataset.name = name
 	return span
@@ -798,4 +1016,14 @@ export const blockQuotesClick = () => {
 			}
 		})
 	})
+}
+
+export const decodeEntities = (encodedString) => {
+	const textarea = document.createElement('textarea')
+	textarea.innerHTML = encodedString
+	return textarea.value
+}
+
+export function validateEmail(email) {
+	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())
 }

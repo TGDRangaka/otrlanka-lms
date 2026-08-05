@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import json
+from datetime import datetime
 
 import frappe
 from frappe import _
@@ -13,21 +14,40 @@ from frappe.utils import (
 	format_time,
 	get_datetime,
 	get_fullname,
+	get_system_timezone,
 	get_time,
 	getdate,
 	nowtime,
 )
 
-from lms.lms.utils import get_evaluator
+from lms.lms.utils import (
+	PRIVILEGED_ROLES,
+	convert_from_system_timezone,
+	format_timezone,
+	get_evaluation_display_timezone,
+	get_evaluator,
+)
 
 
 class LMSCertificateRequest(Document):
 	def validate(self):
+		self.enforce_member_ownership()
 		self.set_evaluator()
 		self.validate_unavailability()
 		self.validate_slot()
 		self.validate_if_existing_requests()
 		self.validate_evaluation_end_date()
+		self.validate_timezone()
+
+	def enforce_member_ownership(self):
+		if PRIVILEGED_ROLES & set(frappe.get_roles()):
+			return
+		if self.member and self.member != frappe.session.user:
+			frappe.throw(
+				_("You cannot book an evaluation for another user."),
+				frappe.PermissionError,
+			)
+		self.member = frappe.session.user
 
 	def after_insert(self):
 		self.send_notification()
@@ -66,6 +86,7 @@ class LMSCertificateRequest(Document):
 			{
 				"evaluator": self.evaluator,
 				"date": self.date,
+				"status": ["!=", "Cancelled"],
 				"start_time": self.start_time,
 				"member": ["!=", self.member],
 			},
@@ -113,6 +134,17 @@ class LMSCertificateRequest(Document):
 						)
 					)
 
+	def validate_timezone(self):
+		"""The zone the stored wall clock is in, never the zone it is shown in.
+
+		date, start_time and end_time are system time: validate_if_existing_requests
+		and mark_eval_as_completed compare them against nowtime(), and create_event
+		hands Google Calendar a naive datetime. Derived, not accepted from the
+		client, so the field cannot come to disagree with what is stored beside it.
+		The display zone comes from the batch or course at render time.
+		"""
+		self.timezone = get_system_timezone()
+
 	def send_notification(self):
 		outgoing_email_account = frappe.get_cached_value(
 			"Email Account", {"default_outgoing": 1, "enable_outgoing": 1}, "name"
@@ -121,12 +153,18 @@ class LMSCertificateRequest(Document):
 			subject = _("Your evaluation slot has been booked")
 			template = "certificate_request_notification"
 
+			# The same instant the learner picked, rendered in the same zone the
+			# picker rendered it in. Otherwise the email restates their booking
+			# in a clock they never saw.
+			timezone = get_evaluation_display_timezone(self.course, self.batch_name)
+			date, start_time = convert_from_system_timezone(self.date, self.start_time, timezone)
+
 			args = {
 				"course": self.course_title,
-				"timezone": self.timezone if self.batch_name else "",
-				"date": format_date(self.date, "medium"),
+				"timezone": format_timezone(timezone, datetime.combine(date, start_time)),
+				"date": format_date(date, "medium"),
 				"member_name": self.member_name,
-				"start_time": format_time(self.start_time, "short"),
+				"start_time": format_time(start_time, "short"),
 				"evaluator": self.evaluator_name,
 			}
 
@@ -153,38 +191,52 @@ def schedule_evals():
 			},
 			["name", "member", "member_name", "evaluator", "date", "start_time", "end_time"],
 		)
-		for eval in evals:
-			setup_calendar_event(eval)
+		for evaluation in evals:
+			setup_calendar_event(evaluation.name)
 
 
 @frappe.whitelist()
-def setup_calendar_event(eval):
-	if isinstance(eval, str):
-		eval = frappe._dict(json.loads(eval))
+def setup_calendar_event(eval_name: str):
+	evaluation = frappe.db.get_value(
+		"LMS Certificate Request",
+		eval_name,
+		["name", "member", "member_name", "evaluator", "date", "start_time", "end_time"],
+		as_dict=1,
+	)
 
-	calendar = frappe.db.get_value("Google Calendar", {"user": eval.evaluator, "enable": 1}, "name")
+	is_member = evaluation.member == frappe.session.user
+	roles = frappe.get_roles(frappe.session.user)
+	is_admin = "Moderator" in roles or "Batch Evaluator" in roles
+
+	if not is_member and not is_admin:
+		frappe.throw(
+			_("You do not have permission to set up calendar events for this evaluation."),
+			frappe.PermissionError,
+		)
+
+	calendar = frappe.db.get_value("Google Calendar", {"user": evaluation.evaluator, "enable": 1}, "name")
 
 	if calendar:
-		event = create_event(eval)
-		add_participants(eval, event)
-		update_meeting_details(eval, event, calendar)
+		event = create_event(evaluation)
+		add_participants(evaluation, event)
+		update_meeting_details(evaluation, event, calendar)
 
 
-def create_event(eval):
+def create_event(evaluation: dict):
 	event = frappe.get_doc(
 		{
 			"doctype": "Event",
-			"subject": f"Evaluation of {eval.member_name}",
-			"starts_on": f"{eval.date} {eval.start_time}",
-			"ends_on": f"{eval.date} {eval.end_time}",
+			"subject": f"Evaluation of {evaluation.member_name}",
+			"starts_on": f"{evaluation.date} {evaluation.start_time}",
+			"ends_on": f"{evaluation.date} {evaluation.end_time}",
 		}
 	)
 	event.save()
 	return event
 
 
-def add_participants(eval, event):
-	participants = [eval.member, eval.evaluator]
+def add_participants(evaluation: dict, event: Document):
+	participants = [evaluation.member, evaluation.evaluator]
 	for participant in participants:
 		contact_name = frappe.db.get_value("Contact", {"email_id": participant}, "name")
 		frappe.get_doc(
@@ -200,7 +252,7 @@ def add_participants(eval, event):
 		).save()
 
 
-def update_meeting_details(eval, event, calendar):
+def update_meeting_details(evaluation: dict, event: Document, calendar: str):
 	event.reload()
 	event.update(
 		{
@@ -212,35 +264,14 @@ def update_meeting_details(eval, event, calendar):
 
 	event.save()
 	event.reload()
-	frappe.db.set_value("LMS Certificate Request", eval.name, "google_meet_link", event.google_meet_link)
+	frappe.db.set_value(
+		"LMS Certificate Request", evaluation.name, "google_meet_link", event.google_meet_link
+	)
 
 
 @frappe.whitelist()
-def create_certificate_request(course, date, day, start_time, end_time, batch_name=None):
-	is_member = frappe.db.exists(
-		{"doctype": "LMS Enrollment", "course": course, "member": frappe.session.user}
-	)
-
-	if not is_member:
-		return
-	eval = frappe.new_doc("LMS Certificate Request")
-	eval.update(
-		{
-			"course": course,
-			"evaluator": get_evaluator(course, batch_name),
-			"member": frappe.session.user,
-			"date": date,
-			"day": day,
-			"start_time": start_time,
-			"end_time": end_time,
-			"batch_name": batch_name,
-		}
-	)
-	eval.save(ignore_permissions=True)
-
-
-@frappe.whitelist()
-def create_lms_certificate_evaluation(source_name, target_doc=None):
+def create_lms_certificate_evaluation(source_name: str, target_doc: dict = None):
+	frappe.only_for(["Moderator", "Batch Evaluator", "System Manager"])
 	doc = get_mapped_doc(
 		"LMS Certificate Request",
 		source_name,

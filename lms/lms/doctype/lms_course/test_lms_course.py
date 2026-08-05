@@ -1,98 +1,71 @@
 # Copyright (c) 2021, FOSS United and Contributors
 # See license.txt
 
-import unittest
-
 import frappe
 
-from .lms_course import LMSCourse
+from lms.lms.api import delete_course
+from lms.lms.test_helpers import BaseTestUtils
 
 
-class TestLMSCourse(unittest.TestCase):
+class TestLMSCourse(BaseTestUtils):
+	def setUp(self):
+		super().setUp()
+		self.instructor = self._create_user(
+			"frappe@example.com", "Frappe", "Admin", ["Moderator", "Course Creator"]
+		)
+
 	def test_new_course(self):
-		course = new_course("Test Course")
-		assert course.title == "Test Course"
+		course_name = f"Test Course {frappe.generate_hash()}"
 
-	# disabled this test as it is failing
-	def _test_add_mentors(self):
-		course = new_course("Test Course")
-		assert course.get_mentors() == []
+		course = self._create_course(course_name)
 
-		new_user("Tester", "tester@example.com")
-		course.add_mentor("tester@example.com")
+		self.assertEqual(course.title, course_name)
+		self.assertTrue(frappe.db.exists("LMS Course", course.name))
 
-		mentors = course.get_mentors()
-		mentors_data = [dict(email=mentor.email, batch_count=mentor.batch_count) for mentor in mentors]
-		assert mentors_data == [{"email": "tester@example.com", "batch_count": 0}]
+	def test_video_link_stored_as_entered(self):
+		course = self._create_course(f"Test Course {frappe.generate_hash()}")
 
-	def tearDown(self):
-		if frappe.db.exists("User", "tester@example.com"):
-			frappe.delete_doc("User", "tester@example.com")
+		# video_link is stored verbatim, with no stripping. The frontend normalizes
+		# both full URLs and uploaded file paths for rendering.
+		for link in (
+			"https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+			"https://www.youtube.com/embed/-LPmw2Znl2c",
+			"https://youtu.be/dQw4w9WgXcQ",
+			"/files/VID-20200313-WA0046.mp4",
+			"/private/files/intro.mp4",
+		):
+			course.video_link = link
+			course.save()
+			self.assertEqual(course.video_link, link)
 
-		if frappe.db.exists("LMS Course", "test-course"):
-			frappe.db.delete("Exercise Submission", {"course": "test-course"})
-			frappe.db.delete("Exercise Latest Submission", {"course": "test-course"})
-			frappe.db.delete("LMS Exercise", {"course": "test-course"})
-			frappe.db.delete("LMS Enrollment", {"course": "test-course"})
-			frappe.db.delete("Course Lesson", {"course": "test-course"})
-			frappe.db.delete("Course Chapter", {"course": "test-course"})
-			frappe.db.delete("LMS Batch Old", {"course": "test-course"})
-			frappe.db.delete("LMS Course Mentor Mapping", {"course": "test-course"})
-			frappe.db.delete("Course Instructor", {"parent": "test-course"})
-			frappe.db.sql("delete from `tabCourse Instructor`")
-			frappe.delete_doc("LMS Course", "test-course")
+	def test_delete_course(self):
+		course = self._create_course(f"Test Course {frappe.generate_hash()}")
+		chapter = self._create_chapter(f"Test Chapter {frappe.generate_hash()}", course.name)
+		lesson = self._create_lesson(f"Test Lesson {frappe.generate_hash()}", chapter.name, course.name)
 
+		lesson_ref = self._create_lesson_reference(chapter.name, lesson.name)
+		chapter_ref = self._create_chapter_reference(course.name, chapter.name)
 
-def new_user(name, email):
-	user = frappe.db.exists("User", email)
-	if user:
-		return frappe.get_doc("User", user)
-	else:
-		filters = {
-			"email": email,
-			"first_name": name,
-			"send_welcome_email": False,
-		}
+		user_email = f"test_{frappe.generate_hash()}@example.com"
+		self._create_user(user_email, "Test", "Member", ["LMS Student"])
+		enrollment = self._create_enrollment(user_email, course.name)
+		progress = self._create_progress(user_email, course.name, lesson.name)
 
-		doc = frappe.new_doc("User")
-		doc.update(filters)
-		doc.save()
-		return doc
+		delete_course(course.name)
 
+		self.assertFalse(frappe.db.exists("LMS Course", course.name))
+		self.assertFalse(frappe.db.exists("Course Chapter", chapter.name))
+		self.assertFalse(frappe.db.exists("Course Lesson", lesson.name))
+		self.assertFalse(frappe.db.exists("LMS Enrollment", enrollment.name))
+		self.assertFalse(frappe.db.exists("LMS Course Progress", {"course": course.name}))
+		self.assertFalse(frappe.db.exists("Chapter Reference", {"parent": course.name}))
+		self.assertFalse(frappe.db.exists("Lesson Reference", {"parent": chapter.name}))
 
-def new_course(title, additional_filters=None):
-	course = frappe.db.exists("LMS Course", {"title": title})
-	if course:
-		return frappe.get_doc("LMS Course", course)
-	else:
-		create_evaluator()
-		user = frappe.db.get_value(
-			"User",
-			{
-				"user_type": "System User",
-			},
-		)
-		filters = {
-			"title": title,
-			"short_introduction": title,
-			"description": title,
-			"video_link": "https://youtu.be/pEbIhUySqbk",
-			"image": "/assets/lms/images/course-home.png",
-			"instructors": [{"instructor": user}],
-		}
-
-		if additional_filters:
-			filters.update(additional_filters)
-
-		doc = frappe.new_doc("LMS Course")
-		doc.update(filters)
-		doc.save()
-		return doc
-
-
-def create_evaluator():
-	if not frappe.db.exists("Course Evaluator", "evaluator@example.com"):
-		new_user("Evaluator", "evaluator@example.com")
-		frappe.get_doc({"doctype": "Course Evaluator", "evaluator": "evaluator@example.com"}).save(
-			ignore_permissions=True
-		)
+		# remove from cleanup_items list since delete_course already deleted them
+		self.cleanup_items.remove(("LMS Course", course.name))
+		self.cleanup_items.remove(("LMS Enrollment", enrollment.name))
+		self.cleanup_items.remove(("LMS Course Progress", progress.name))
+		self.cleanup_items.remove(("Chapter Reference", chapter_ref.name))
+		self.cleanup_items.remove(("Lesson Reference", lesson_ref.name))
+		self.cleanup_items.remove(("Course Chapter", chapter.name))
+		self.cleanup_items.remove(("Course Lesson", lesson.name))
