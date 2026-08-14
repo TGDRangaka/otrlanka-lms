@@ -7,7 +7,7 @@
 		</template>
 		<template #default>
 			<div v-if="program.data" class="text-base text-ink-gray-9">
-				<div class="bg-surface-blue-2 text-ink-blue-6 p-2 rounded-md leading-5">
+				<div v-if="!hasSelfLearningDisabled" class="bg-surface-blue-2 text-ink-blue-6 p-2 rounded-md leading-5">
 					<span>
 						{{
 							__('This program consists of {0} courses').format(
@@ -92,7 +92,10 @@
 		</template>
 		<template #actions="{ close }">
 			<div class="flex justify-end gap-x-2 group">
-				<Button variant="solid" @click="enrollInProgram(close)">
+				<div v-if="hasSelfLearningDisabled" class="bg-surface-orange-2 text-ink-orange-6 p-2 rounded-md text-sm leading-5 w-full text-center">
+					{{ __('Self-enrollment is not available for this program. Please contact your administrator.') }}
+				</div>
+				<Button v-else variant="solid" @click="enrollInProgram(close)">
 					{{ __('Confirm Enrollment') }}
 				</Button>
 			</div>
@@ -101,7 +104,7 @@
 </template>
 <script setup lang="ts">
 import { Button, call, createResource, Dialog, toast, Tooltip } from 'frappe-ui'
-import { inject, watch } from 'vue'
+import { computed, inject, watch } from 'vue'
 
 import { useRouter } from 'vue-router'
 import CourseInstructors from '@/components/CourseInstructors.vue'
@@ -132,6 +135,18 @@ watch(
 		}
 	}
 )
+
+watch(show, (val) => {
+	if (val && props.programName) {
+		program.reload()
+	}
+})
+
+const hasSelfLearningDisabled = computed(() => {
+	return program.data?.courses?.some(
+		(course: any) => course.disable_self_learning == 1 || course.disable_self_learning === true
+	)
+})
 
 const enrollInProgram = (close: () => void) => {
 	call('lms.lms.utils.enroll_in_program', {
