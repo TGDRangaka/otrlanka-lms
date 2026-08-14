@@ -91,7 +91,7 @@
 			</div>
 		</template>
 		<template #actions="{ close }">
-			<div class="flex justify-end gap-x-2 group">
+			<div v-if="program.data && !program.loading" class="flex justify-end gap-x-2 group">
 				<div v-if="hasSelfLearningDisabled" class="bg-surface-orange-2 text-ink-orange-6 p-2 rounded-md text-sm leading-5 w-full text-center">
 					{{ __('Self-enrollment is not available for this program. Please contact your administrator.') }}
 				</div>
@@ -99,11 +99,14 @@
 					{{ __('Confirm Enrollment') }}
 				</Button>
 			</div>
+			<div v-else class="flex justify-end py-1">
+				<LoadingIndicator class="size-4 text-ink-gray-5" />
+			</div>
 		</template>
 	</Dialog>
 </template>
 <script setup lang="ts">
-import { Button, call, createResource, Dialog, toast, Tooltip } from 'frappe-ui'
+import { Button, call, createResource, Dialog, LoadingIndicator, toast, Tooltip } from 'frappe-ui'
 import { computed, inject, watch } from 'vue'
 
 import { useRouter } from 'vue-router'
