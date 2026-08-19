@@ -524,18 +524,24 @@ const updateOrder = async (e: DragEvent) => {
 const wait = (ms: number) => new Promise((res) => setTimeout(res, ms))
 
 const remove = (
-	selections: string[],
+	selections: any,
 	unselectAll: () => void,
 	type: string
 ) => {
 	const selectionsArray = Array.from(selections)
 	if (type === 'courses') {
 		program.value.program_courses = program.value.program_courses.filter(
-			(c: any) => !selectionsArray.includes(c.name || c.course)
+			(c: any) =>
+				!selectionsArray.includes(c.course) &&
+				!selectionsArray.includes(c.name) &&
+				!selectionsArray.includes(c)
 		)
 	} else {
 		program.value.program_members = program.value.program_members.filter(
-			(m: any) => !selectionsArray.includes(m.name || m.member)
+			(m: any) =>
+				!selectionsArray.includes(m.member) &&
+				!selectionsArray.includes(m.name) &&
+				!selectionsArray.includes(m)
 		)
 	}
 	dirty.value = true
@@ -558,6 +564,7 @@ const deleteProgram = (close: () => void) => {
 					programs.value?.delete.submit(props.programName, {
 						onSuccess() {
 							toast.success(__('Program deleted successfully'))
+							programs.value?.reload()
 							close()
 							closeDialog()
 						},
