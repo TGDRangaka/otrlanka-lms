@@ -133,12 +133,10 @@ const branding = createResource({
 })
 
 const saveSettings = createResource({
-	url: 'frappe.client.set_value',
+	url: 'lms.lms.api.update_branding',
 	makeParams(values) {
 		return {
-			doctype: 'Website Settings',
-			name: 'Website Settings',
-			fieldname: values.fields,
+			fields: values.fields,
 		}
 	},
 })
@@ -166,6 +164,8 @@ const update = () => {
 		{
 			onSuccess() {
 				isDirty.value = false
+				branding.reload()
+				sessionStore().branding?.reload()
 			},
 		}
 	)

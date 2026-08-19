@@ -29,7 +29,7 @@ const props = defineProps({
 // Attach to the lesson only once it exists: a null docname with doctype set
 // makes the File doctype reject the upload.
 const uploadArgs = computed(() => {
-	const args = { private: true }
+	const args = { private: false }
 	const docname = props.uploadContext?.docname
 	if (docname) {
 		args.doctype = 'Course Lesson'

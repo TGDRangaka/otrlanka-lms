@@ -31,6 +31,27 @@ class LMSCourse(Document):
 		self.validate_amount_and_currency()
 		self.image = validate_image(self.image)
 		self.validate_card_gradient()
+		self.ensure_public_media()
+
+	def ensure_public_media(self):
+		if not self.description or "/private/files/" not in self.description:
+			return
+		import os, re
+		self.description = self.description.replace("/private/files/", "/files/")
+		site_path = frappe.get_site_path()
+		file_urls = re.findall(r'/files/[^\s"\'<>]+', self.description)
+		for file_url in file_urls:
+			file_doc = frappe.db.get_value("File", {"file_url": file_url}, ["name", "is_private"], as_dict=1)
+			if not file_doc:
+				priv_url = file_url.replace("/files/", "/private/files/")
+				file_doc = frappe.db.get_value("File", {"file_url": priv_url}, ["name", "is_private"], as_dict=1)
+			if file_doc:
+				filename = file_url.replace("/files/", "")
+				old_path = os.path.join(site_path, "private", "files", filename)
+				new_path = os.path.join(site_path, "public", "files", filename)
+				if os.path.exists(old_path):
+					os.rename(old_path, new_path)
+				frappe.db.set_value("File", file_doc.name, {"is_private": 0, "file_url": file_url})
 
 	def validate_published(self):
 		if not self.published:
