@@ -16,8 +16,8 @@
 					"
 				>
 					<img
-						v-if="branding.data?.banner_image"
-						:src="branding.data?.banner_image.file_url"
+						v-if="branding.data?.banner_image?.file_url || branding.data?.app_logo?.file_url"
+						:src="branding.data?.banner_image?.file_url || branding.data?.app_logo?.file_url"
 						class="w-8 h-8 rounded flex-shrink-0"
 					/>
 					<LMSLogo v-else class="w-8 h-8 rounded flex-shrink-0" />

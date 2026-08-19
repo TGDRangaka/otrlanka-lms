@@ -33,6 +33,7 @@
 						<FileUploader
 							v-if="!data[field.name]"
 							:fileTypes="['image/*']"
+							:uploadArgs="{ private: false }"
 							:validateFile="validateFile"
 							@success="(file) => (data[field.name] = file.file_url)"
 						>

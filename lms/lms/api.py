@@ -375,10 +375,14 @@ def get_chart_details():
 
 def get_file_info(file_url):
 	"""Get file info for the given file URL."""
-	file_info = frappe.db.get_value(
-		"File", {"file_url": file_url}, ["file_name", "file_size", "file_url"], as_dict=1
+	files = frappe.get_all(
+		"File",
+		filters={"file_url": file_url},
+		fields=["file_name", "file_size", "file_url"],
+		ignore_permissions=True,
+		limit=1,
 	)
-	return file_info
+	return files[0] if files else None
 
 
 @frappe.whitelist(allow_guest=True)
@@ -390,7 +394,7 @@ def get_branding():
 	settings = frappe._dict()
 
 	for field in fields:
-		value = frappe.get_cached_value("Website Settings", None, field)
+		value = frappe.db.get_single_value("Website Settings", field)
 		if field in image_fields and value:
 			file_info = get_file_info(value)
 			settings.update({field: json.loads(json.dumps(file_info))})
@@ -398,6 +402,23 @@ def get_branding():
 			settings.update({field: value})
 
 	return settings
+
+
+@frappe.whitelist()
+def update_branding(fields: dict):
+	if not frappe.has_permission("Website Settings", "write"):
+		frappe.throw(_("Not permitted"))
+
+	if isinstance(fields, str):
+		fields = json.loads(fields)
+
+	doc = frappe.get_single("Website Settings")
+	for k, v in fields.items():
+		if hasattr(doc, k):
+			setattr(doc, k, v)
+	doc.save(ignore_permissions=True)
+	frappe.clear_cache()
+	return get_branding()
 
 
 @frappe.whitelist()
