@@ -46,6 +46,8 @@ class LMSProgram(Document):
 
 	def on_update(self):
 		self.auto_enroll_members_in_courses()
+		self.auto_unenroll_removed_members()
+		self.auto_unenroll_removed_courses()
 
 	def auto_enroll_members_in_courses(self):
 		"""Auto-create LMS Enrollment for every program member across every program course.
@@ -83,6 +85,92 @@ class LMSProgram(Document):
 					)
 				finally:
 					frappe.flags.lms_program_auto_enroll = False
+
+	def auto_unenroll_removed_members(self):
+		"""When members are removed from a program, delete their LMS Enrollment
+		for each of this program's courses — but only if no other program still
+		gives them access to that course."""
+		previous = self.get_doc_before_save()
+		if not previous:
+			return
+
+		old_members = {row.member for row in previous.program_members}
+		new_members = {row.member for row in self.program_members}
+		removed_members = old_members - new_members
+
+		if not removed_members:
+			return
+
+		courses = [row.course for row in self.program_courses]
+		if not courses:
+			return
+
+		for member in removed_members:
+			for course in courses:
+				if self._is_enrolled_via_another_program(member, course):
+					continue
+				enrollment_name = frappe.db.exists(
+					"LMS Enrollment", {"course": course, "member": member}
+				)
+				if enrollment_name:
+					try:
+						frappe.delete_doc(
+							"LMS Enrollment", enrollment_name, ignore_permissions=True, force=True
+						)
+					except Exception:
+						frappe.log_error(
+							title=f"Program auto-unenroll failed: {member} → {course} ({self.name})"
+						)
+
+	def auto_unenroll_removed_courses(self):
+		"""When courses are removed from a program, delete enrollments for all
+		current members in those courses — but only if no other program still
+		gives them access to that course."""
+		previous = self.get_doc_before_save()
+		if not previous:
+			return
+
+		old_courses = {row.course for row in previous.program_courses}
+		new_courses = {row.course for row in self.program_courses}
+		removed_courses = old_courses - new_courses
+
+		if not removed_courses:
+			return
+
+		members = [row.member for row in self.program_members]
+		if not members:
+			return
+
+		for course in removed_courses:
+			for member in members:
+				if self._is_enrolled_via_another_program(member, course):
+					continue
+				enrollment_name = frappe.db.exists(
+					"LMS Enrollment", {"course": course, "member": member}
+				)
+				if enrollment_name:
+					try:
+						frappe.delete_doc(
+							"LMS Enrollment", enrollment_name, ignore_permissions=True, force=True
+						)
+					except Exception:
+						frappe.log_error(
+							title=f"Program auto-unenroll failed: {member} → {course} ({self.name})"
+						)
+
+	def _is_enrolled_via_another_program(self, member, course):
+		"""Check if the member is in any OTHER program that also has this course."""
+		other_programs = frappe.get_all(
+			"LMS Program Member",
+			filters={"member": member, "parent": ["!=", self.name]},
+			pluck="parent",
+		)
+		for program in other_programs:
+			if frappe.db.exists(
+				"LMS Program Course", {"parent": program, "course": course}
+			):
+				return True
+		return False
 
 
 def has_permission(doc, ptype="read", user=None):
