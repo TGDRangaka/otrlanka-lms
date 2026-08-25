@@ -44,6 +44,46 @@ class LMSProgram(Document):
 		if self.member_count != member_count:
 			self.member_count = member_count
 
+	def on_update(self):
+		self.auto_enroll_members_in_courses()
+
+	def auto_enroll_members_in_courses(self):
+		"""Auto-create LMS Enrollment for every program member across every program course.
+
+		This ensures that when an admin assigns a student to a program, the student
+		is immediately enrolled in all courses belonging to that program without any
+		manual step. Courses with disable_self_learning, paid_course, or unpublished
+		status are handled gracefully via the lms_program_auto_enroll flag which
+		bypasses those guards (equivalent to an admin enrolling on behalf of the student).
+		Any per-course failure is logged individually and never aborts the program save.
+		"""
+		courses = [row.course for row in self.program_courses]
+		members = [row.member for row in self.program_members]
+
+		if not courses or not members:
+			return
+
+		for member in members:
+			for course in courses:
+				if frappe.db.exists("LMS Enrollment", {"course": course, "member": member}):
+					continue
+				frappe.flags.lms_program_auto_enroll = True
+				try:
+					enrollment = frappe.get_doc(
+						{
+							"doctype": "LMS Enrollment",
+							"course": course,
+							"member": member,
+						}
+					)
+					enrollment.insert(ignore_permissions=True)
+				except Exception:
+					frappe.log_error(
+						title=f"Program auto-enroll failed: {member} → {course} ({self.name})"
+					)
+				finally:
+					frappe.flags.lms_program_auto_enroll = False
+
 
 def has_permission(doc, ptype="read", user=None):
 	user = user or frappe.session.user

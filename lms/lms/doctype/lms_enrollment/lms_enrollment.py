@@ -96,6 +96,12 @@ class LMSEnrollment(Document):
 
 
 def is_admin():
+	# Also treat system-initiated program auto-enrollment as admin so that
+	# courses with disable_self_learning / paid_course / unpublished status
+	# are never blocked when an admin assigns a member to a program.
+	if getattr(frappe.flags, "lms_program_auto_enroll", False):
+		return True
+
 	roles = frappe.get_roles(frappe.session.user)
 	admin_roles = ["Moderator", "Course Creator", "Batch Evaluator"]
 	for role in admin_roles:
