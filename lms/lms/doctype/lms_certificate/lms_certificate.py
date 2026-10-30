@@ -16,7 +16,7 @@ class LMSCertificate(Document):
 		self.validate_duplicate_certificate()
 
 	def autoname(self):
-		self.name = make_autoname("hash", self.doctype)
+		self.name = make_autoname("OTR-CERT-.#####", self.doctype)
 
 	def after_insert(self):
 		capture("certificate_issued", "lms")
